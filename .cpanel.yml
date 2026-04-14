@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/santama2/public_html/
+    - /bin/cp -f index.html $DEPLOYPATH
+    - /bin/cp -rf images $DEPLOYPATH
