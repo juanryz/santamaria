@@ -1,0 +1,104 @@
+{
+  "welcomeTitle": "SANTA MARIA",
+  "welcomeSubtitle": "Funeral Organizer",
+  "aiConsultBtn": "Start AI Consultation",
+  "personnelLoginBtn": "Login as Personnel",
+
+  "dashboardTitle": "Dashboard",
+  "orderActive": "Active Orders",
+  "orderPending": "Pending",
+  "orderCompleted": "Completed",
+
+  "workshopPeti": "Coffin Workshop",
+  "coffinOrderNew": "New Coffin Order",
+  "coffinStage": "Production Stage",
+  "coffinQc": "Quality Control",
+  "qcPassed": "QC Passed",
+  "qcFailed": "QC Failed",
+
+  "equipment": "Equipment",
+  "equipmentChecklist": "Equipment Checklist",
+  "equipmentLoan": "Equipment Loan",
+  "equipmentMissing": "Unreturned Equipment",
+  "sendEquipment": "Send",
+  "returnEquipment": "Return",
+
+  "stockAlert": "Stock Alert",
+  "stockLow": "Low Stock",
+  "stockOut": "Out of Stock",
+  "stockForm": "Take/Return Items",
+  "stockTake": "Take Out",
+  "stockReturn": "Return",
+
+  "consumableDaily": "Daily Consumables",
+  "shiftPagi": "Morning (P)",
+  "shiftKirim": "Delivery (K)",
+  "shiftMalam": "Night (M)",
+
+  "billingReport": "Billing Report",
+  "billingTotal": "Total",
+  "billingTambahan": "Additional",
+  "billingKembali": "Refund",
+  "billingGrandTotal": "Grand Total",
+  "exportPdf": "Export PDF",
+
+  "deathCertChecklist": "Death Certificate Docs",
+  "deathCertReceived": "Received by SM",
+  "deathCertReturnedFamily": "Returned to Family",
+
+  "extraApproval": "Additional Approval",
+  "extraApprovalSign": "Sign",
+
+  "attendance": "Attendance",
+  "checkIn": "Check-In",
+  "checkOut": "Check-Out",
+  "attendancePresent": "Present",
+  "attendanceLate": "Late",
+  "attendanceAbsent": "Absent",
+
+  "vehicleTripLog": "Vehicle Trip Log",
+
+  "dekorDailyPackage": "La Fiore Daily Package",
+
+  "kpi": "KPI",
+  "kpiMyScore": "My KPI",
+  "kpiMetrics": "KPI Metrics",
+  "kpiRanking": "Ranking",
+  "kpiPeriod": "Period",
+  "gradeA": "Excellent",
+  "gradeB": "Good",
+  "gradeC": "Average",
+  "gradeD": "Below Average",
+  "gradeE": "Poor",
+
+  "violation": "Violation",
+  "violationAcknowledge": "Acknowledge",
+  "violationResolve": "Resolve",
+  "violationEscalate": "Escalate",
+  "threshold": "Threshold Settings",
+
+  "paymentVerify": "Verify Payment",
+  "paymentCash": "Cash",
+  "paymentTransfer": "Bank Transfer",
+  "paymentUploadProof": "Upload Transfer Proof",
+  "paymentReject": "Reject",
+  "paymentApprove": "Verify",
+
+  "whatsappContact": "Contact via WhatsApp",
+
+  "alarmTitle": "ATTENTION!",
+  "alarmDismiss": "Dismiss",
+  "alarmView": "View",
+
+  "save": "Save",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "delete": "Delete",
+  "edit": "Edit",
+  "loading": "Loading...",
+  "noData": "No data yet",
+  "error": "An error occurred",
+  "success": "Success",
+  "required": "Required",
+  "logout": "Logout"
+}

@@ -1,0 +1,104 @@
+{
+  "welcomeTitle": "SANTA MARIA",
+  "welcomeSubtitle": "Funeral Organizer",
+  "aiConsultBtn": "Mulai Konsultasi AI",
+  "personnelLoginBtn": "Masuk sebagai Personel",
+
+  "dashboardTitle": "Dashboard",
+  "orderActive": "Order Aktif",
+  "orderPending": "Menunggu",
+  "orderCompleted": "Selesai",
+
+  "workshopPeti": "Workshop Peti",
+  "coffinOrderNew": "Order Peti Baru",
+  "coffinStage": "Tahap Pengerjaan",
+  "coffinQc": "Quality Control",
+  "qcPassed": "Lolos QC",
+  "qcFailed": "Gagal QC",
+
+  "equipment": "Peralatan",
+  "equipmentChecklist": "Checklist Peralatan",
+  "equipmentLoan": "Pinjaman Peralatan",
+  "equipmentMissing": "Peralatan Belum Kembali",
+  "sendEquipment": "Kirim",
+  "returnEquipment": "Kembali",
+
+  "stockAlert": "Alert Stok",
+  "stockLow": "Stok Rendah",
+  "stockOut": "Stok Habis",
+  "stockForm": "Ambil/Kembali Barang",
+  "stockTake": "Pengambilan",
+  "stockReturn": "Pengembalian",
+
+  "consumableDaily": "Data Barang Harian",
+  "shiftPagi": "Pagi (P)",
+  "shiftKirim": "Kirim (K)",
+  "shiftMalam": "Malam (M)",
+
+  "billingReport": "Laporan Tagihan",
+  "billingTotal": "Total Tagihan",
+  "billingTambahan": "Tambahan",
+  "billingKembali": "Kembali",
+  "billingGrandTotal": "Grand Total",
+  "exportPdf": "Export PDF",
+
+  "deathCertChecklist": "Berkas Akta Kematian",
+  "deathCertReceived": "Diterima SM",
+  "deathCertReturnedFamily": "Dikembalikan ke Keluarga",
+
+  "extraApproval": "Persetujuan Tambahan",
+  "extraApprovalSign": "Tanda Tangan",
+
+  "attendance": "Presensi",
+  "checkIn": "Check-In",
+  "checkOut": "Check-Out",
+  "attendancePresent": "Hadir",
+  "attendanceLate": "Terlambat",
+  "attendanceAbsent": "Tidak Hadir",
+
+  "vehicleTripLog": "Nota Mobil Jenazah",
+
+  "dekorDailyPackage": "Paket Harian La Fiore",
+
+  "kpi": "KPI",
+  "kpiMyScore": "KPI Saya",
+  "kpiMetrics": "Metrik KPI",
+  "kpiRanking": "Ranking",
+  "kpiPeriod": "Periode",
+  "gradeA": "Sangat Baik",
+  "gradeB": "Baik",
+  "gradeC": "Cukup",
+  "gradeD": "Kurang",
+  "gradeE": "Buruk",
+
+  "violation": "Pelanggaran",
+  "violationAcknowledge": "Akui",
+  "violationResolve": "Selesaikan",
+  "violationEscalate": "Eskalasi",
+  "threshold": "Pengaturan Threshold",
+
+  "paymentVerify": "Verifikasi Payment",
+  "paymentCash": "Cash",
+  "paymentTransfer": "Transfer Bank",
+  "paymentUploadProof": "Upload Bukti Transfer",
+  "paymentReject": "Tolak",
+  "paymentApprove": "Verifikasi",
+
+  "whatsappContact": "Hubungi via WhatsApp",
+
+  "alarmTitle": "PERHATIAN!",
+  "alarmDismiss": "Tutup",
+  "alarmView": "Lihat",
+
+  "save": "Simpan",
+  "cancel": "Batal",
+  "confirm": "Konfirmasi",
+  "delete": "Hapus",
+  "edit": "Ubah",
+  "loading": "Memuat...",
+  "noData": "Belum ada data",
+  "error": "Terjadi kesalahan",
+  "success": "Berhasil",
+  "required": "Wajib diisi",
+  "logout": "Keluar"
+}
