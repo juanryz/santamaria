@@ -3,8 +3,12 @@
 @section('content')
 <div class="flex justify-between items-center mb-6">
     <h2 class="font-serif text-3xl text-navy">Artikel</h2>
-    <a href="/articles/create" class="bg-gold text-navy px-4 py-2 rounded font-semibold hover:bg-gold/90">+ Artikel Baru</a>
+    <div class="flex gap-2">
+        <a href="/articles/ai-generate" class="bg-navy text-white px-4 py-2 rounded font-semibold hover:bg-navy/90">✨ Generate AI</a>
+        <a href="/articles/create" class="bg-gold text-navy px-4 py-2 rounded font-semibold hover:bg-gold/90">+ Artikel Baru</a>
+    </div>
 </div>
+@if(session('success'))<div class="bg-green-50 border border-green-200 text-green-800 p-3 rounded mb-4">{{ session('success') }}</div>@endif
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <table class="w-full text-sm">
         <thead class="bg-navy text-white">

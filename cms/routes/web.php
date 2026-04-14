@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AiGenerateController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ObituaryController;
@@ -22,6 +23,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/articles', [ArticleController::class, 'index'])->name('articles.index');
+    Route::get('/articles/ai-generate', [AiGenerateController::class, 'form'])->name('ai.generate.article');
+    Route::post('/articles/ai-generate', [AiGenerateController::class, 'generate'])->name('ai.generate.article.store');
     Route::get('/articles/create', [ArticleController::class, 'create'])->name('articles.create');
     Route::post('/articles', [ArticleController::class, 'store'])->name('articles.store');
     Route::get('/articles/{id}/edit', [ArticleController::class, 'edit'])->name('articles.edit');
