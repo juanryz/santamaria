@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/network/api_client.dart';
 import '../../../data/repositories/so_repository.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
@@ -31,18 +29,11 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
   List<dynamic> _packages = [];
   List<dynamic> _addonsList = [];
   bool _isLoading = true;
-  bool _isSubmitting = false;
   bool _isAddingAddon = false;
   String? _error;
 
   String? _selectedPackageId;
-  Map<String, dynamic>?
-  _selectedPackage; // holds full pkg object for price display
-  final _finalPriceController = TextEditingController();
-  final _notesController = TextEditingController();
-  final _guestsController = TextEditingController();
-  final _durationController = TextEditingController(text: '3');
-  DateTime? _scheduledAt;
+  Map<String, dynamic>? _selectedPackage;
 
   final _currency = NumberFormat.currency(
     locale: 'id_ID',
@@ -60,10 +51,6 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
 
   @override
   void dispose() {
-    _finalPriceController.dispose();
-    _notesController.dispose();
-    _guestsController.dispose();
-    _durationController.dispose();
     super.dispose();
   }
 
@@ -85,13 +72,7 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
 
       if (orderRes.data['success'] == true) {
         final order = orderRes.data['data'] as Map<String, dynamic>;
-        setState(() {
-          _order = order;
-          _finalPriceController.text =
-              (order['final_price'] ?? order['estimated_price'] ?? '')
-                  .toString();
-          _guestsController.text = (order['estimated_guests'] ?? '').toString();
-        });
+        setState(() => _order = order);
       }
       if (pkgRes.data['success'] == true) {
         setState(() => _packages = pkgRes.data['data'] as List);
@@ -109,7 +90,6 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
           );
         });
       }
-      _recalculateFinalPrice();
     } catch (e) {
       setState(() => _error = 'Gagal memuat data order.');
     } finally {
@@ -117,203 +97,7 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
     }
   }
 
-  void _recalculateFinalPrice() {
-    double total = 0;
-    if (_selectedPackage != null) {
-      total += double.tryParse(_selectedPackage!['base_price'].toString()) ?? 0;
-    }
-    final List<dynamic> addons = _order?['order_add_ons'] ?? [];
-    for (var addon in addons) {
-      final price = double.tryParse(addon['price_at_time'].toString()) ?? 0;
-      final qty = int.tryParse(addon['quantity'].toString()) ?? 1;
-      total += (price * qty);
-    }
-    _finalPriceController.text = total.toStringAsFixed(0);
-  }
 
-  Future<void> _pickSchedule() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _scheduledAt ?? DateTime.now().add(const Duration(hours: 2)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(
-        _scheduledAt ?? DateTime.now().add(const Duration(hours: 2)),
-      ),
-    );
-    if (time == null || !mounted) return;
-    setState(() {
-      _scheduledAt = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      );
-    });
-  }
-
-  Future<void> _showStockPreview() async {
-    if (_selectedPackageId == null) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final api = ApiClient();
-      final res = await api.dio.get(
-        '/so/orders/${widget.orderId}/stock-check',
-        queryParameters: {'package_id': _selectedPackageId},
-      );
-      if (!mounted) return;
-      Navigator.pop(context);
-      final resData = res.data['data'] as Map<String, dynamic>? ?? {};
-      final data = resData['items'] as List? ?? [];
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: AppColors.surfaceWhite,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (_) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.glassBorder, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              const Text('Ketersediaan Stok', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 12),
-              if (data.isEmpty)
-                const Text('Semua stok tersedia.', style: TextStyle(color: AppColors.statusSuccess))
-              else
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: data.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final item = data[i] as Map<String, dynamic>;
-                      final available = (item['available'] ?? 0) as num;
-                      final needed = (item['needed'] ?? 0) as num;
-                      final ok = available >= needed;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(ok ? Icons.check_circle : Icons.warning_amber_rounded, color: ok ? AppColors.statusSuccess : AppColors.statusWarning, size: 20),
-                        title: Text(item['item_name'] ?? '-', style: const TextStyle(fontSize: 13)),
-                        trailing: Text('${available.toInt()} / ${needed.toInt()}', style: TextStyle(color: ok ? AppColors.statusSuccess : AppColors.statusDanger, fontWeight: FontWeight.bold, fontSize: 13)),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    } catch (_) {
-      if (mounted) {
-        Navigator.pop(context);
-        _snack('Gagal memuat data stok.');
-      }
-    }
-  }
-
-  Future<void> _submitOrder() async {
-    if (_selectedPackageId == null) {
-      _snack('Pilih paket terlebih dahulu.');
-      return;
-    }
-    final priceText = _finalPriceController.text.trim();
-    if (priceText.isEmpty) {
-      _snack('Masukkan harga akhir.');
-      return;
-    }
-    if (_scheduledAt == null) {
-      _snack('Tentukan jadwal pemakaman.');
-      return;
-    }
-    final duration = double.tryParse(_durationController.text.trim());
-    if (duration == null || duration < 0.5) {
-      _snack('Masukkan estimasi durasi (minimal 0.5 jam).');
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Konfirmasi Order?'),
-        content: const Text(
-          'Order akan dikonfirmasi dan semua departemen akan mendapat notifikasi alarm. Lanjutkan?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: _roleColor),
-            child: const Text('Konfirmasi'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isSubmitting = true);
-    try {
-      final res = await widget.repo.confirmOrder(widget.orderId, {
-        'package_id': _selectedPackageId,
-        'scheduled_at': _scheduledAt!.toIso8601String(),
-        'estimated_duration_hours': duration,
-        'final_price': double.tryParse(priceText) ?? 0,
-        'so_notes': _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
-        'estimated_guests': int.tryParse(_guestsController.text.trim()),
-      });
-
-      if (res.data['success'] == true) {
-        if (!mounted) return;
-        _snack('Order dikonfirmasi! Semua tim sudah mendapat notifikasi.');
-        Navigator.pop(context);
-      } else {
-        _snack(res.data['message'] ?? 'Gagal konfirmasi order.');
-      }
-    } on DioException catch (e) {
-      final msg = e.response?.data?['message'] ?? e.message ?? 'Unknown error';
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text(
-              'Gagal Konfirmasi',
-              style: TextStyle(color: Colors.red),
-            ),
-            content: Text(msg),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Tutup'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      _snack('Gagal konfirmasi order. Periksa koneksi Anda.');
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
-    }
-  }
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -673,346 +457,62 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
             const SizedBox(height: 24),
           ],
 
-          if (order['status'] == 'pending') ...[
-            _sectionTitle('Konfirmasi Order'),
-            GlassWidget(
-              borderRadius: 16,
-              blurSigma: 16,
-              tint: AppColors.glassWhite,
-              borderColor: AppColors.glassBorder,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Pilih Paket',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
+          _sectionTitle('Detail Pelaksanaan'),
+          GlassWidget(
+            borderRadius: 16,
+            blurSigma: 16,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_selectedPackage != null)
+                  _infoRow(
+                    Icons.inventory_2_outlined,
+                    'Paket Terpilih',
+                    _selectedPackage!['name'] ?? '-',
                   ),
+                if (_selectedPackage != null) const SizedBox(height: 8),
+                _infoRow(
+                  Icons.calendar_month_outlined,
+                  'Jadwal Pemakaman',
+                  _formatDate(order['scheduled_at']),
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  Icons.timer_outlined,
+                  'Estimasi Durasi',
+                  '${order['estimated_duration_hours'] ?? '-'} Jam',
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  Icons.payments_outlined,
+                  'Harga Akhir',
+                  _currency.format(
+                    double.tryParse(
+                          order['final_price']?.toString() ?? '0',
+                        ) ??
+                        0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _infoRow(
+                  Icons.people_outline,
+                  'Estimasi Tamu',
+                  '${order['estimated_guests'] ?? '-'} Orang',
+                ),
+                if (order['so_notes'] != null) ...[
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedPackageId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      hintText: 'Pilih paket layanan',
-                    ),
-                    items: _packages.map((pkg) {
-                      final price = _currency.format(
-                        double.tryParse(pkg['base_price'].toString()) ?? 0,
-                      );
-                      final stockStatus = pkg['stock_status'] as String?;
-                      final isLowStock = stockStatus == 'low_stock' || stockStatus == 'out_of_stock';
-                      return DropdownMenuItem<String>(
-                        value: pkg['id'],
-                        enabled: stockStatus != 'out_of_stock',
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${pkg['name']} — $price',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: stockStatus == 'out_of_stock' ? AppColors.textHint : null,
-                                ),
-                              ),
-                            ),
-                            if (isLowStock)
-                              Container(
-                                margin: const EdgeInsets.only(left: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: stockStatus == 'out_of_stock'
-                                      ? AppColors.statusDanger.withValues(alpha: 0.12)
-                                      : AppColors.statusWarning.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  stockStatus == 'out_of_stock' ? 'Habis' : 'Stok Tipis',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: stockStatus == 'out_of_stock'
-                                        ? AppColors.statusDanger
-                                        : AppColors.statusWarning,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      setState(() {
-                        _selectedPackageId = val;
-                        _selectedPackage = val == null
-                            ? null
-                            : _packages
-                                  .cast<Map<String, dynamic>?>()
-                                  .firstWhere(
-                                    (p) => p?['id'] == val,
-                                    orElse: () => null,
-                                  );
-                      });
-                      if (val != null) {
-                        _recalculateFinalPrice();
-                      }
-                    },
-                  ),
-                  // ── Selected package price card ──────────────────────────
-                  if (_selectedPackage != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: _roleColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _roleColor.withValues(alpha: 0.3),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.inventory_2_outlined,
-                            color: AppColors.roleSO,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _selectedPackage!['name'] ?? '-',
-                                  style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Harga Dasar Paket',
-                                  style: TextStyle(
-                                    color: AppColors.textHint,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            _currency.format(
-                              double.tryParse(
-                                    _selectedPackage!['base_price'].toString(),
-                                  ) ??
-                                  0,
-                            ),
-                            style: const TextStyle(
-                              color: AppColors.roleSO,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  // ── Jadwal Pemakaman ─────────────────────────────────────
-                  GestureDetector(
-                    onTap: _pickSchedule,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundSoft,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _scheduledAt != null
-                              ? _roleColor.withValues(alpha: 0.6)
-                              : AppColors.textHint.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_month_outlined,
-                            color: _scheduledAt != null
-                                ? _roleColor
-                                : AppColors.textHint,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Jadwal Pemakaman *',
-                                  style: TextStyle(
-                                    color: AppColors.textHint,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                                Text(
-                                  _scheduledAt != null
-                                      ? DateFormat(
-                                          'dd MMM yyyy, HH:mm',
-                                          'id_ID',
-                                        ).format(_scheduledAt!)
-                                      : 'Ketuk untuk pilih tanggal & waktu',
-                                  style: TextStyle(
-                                    color: _scheduledAt != null
-                                        ? AppColors.textPrimary
-                                        : AppColors.textHint,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: AppColors.textHint,
-                            size: 18,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _textField(
-                    controller: _durationController,
-                    label: 'Estimasi Durasi (jam) *',
-                    icon: Icons.timer_outlined,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  _textField(
-                    controller: _finalPriceController,
-                    label: 'Harga Akhir (Rp) * (Otomatis)',
-                    icon: Icons.payments_outlined,
-                    keyboardType: TextInputType.number,
-                    enabled: false,
-                  ),
-                  const SizedBox(height: 14),
-                  _textField(
-                    controller: _guestsController,
-                    label: 'Estimasi Tamu',
-                    icon: Icons.people_outline,
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 14),
-                  _textField(
-                    controller: _notesController,
-                    label: 'Catatan SO (opsional)',
-                    icon: Icons.notes_outlined,
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 14),
-                  // Stock Check Preview
-                  if (_selectedPackageId != null)
-                    OutlinedButton.icon(
-                      onPressed: () => _showStockPreview(),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.roleGudang,
-                        side: const BorderSide(color: AppColors.roleGudang),
-                        minimumSize: const Size(double.infinity, 44),
-                      ),
-                      icon: const Icon(Icons.inventory_outlined, size: 18),
-                      label: const Text('Cek Ketersediaan Stok'),
-                    ),
-                  const SizedBox(height: 14),
-                  ElevatedButton.icon(
-                    onPressed: _isSubmitting ? null : _submitOrder,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _roleColor,
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                    icon: _isSubmitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.check_circle_outline, size: 18),
-                    label: Text(
-                      _isSubmitting ? 'Mengonfirmasi...' : 'Konfirmasi Order',
-                    ),
+                  _infoRow(
+                    Icons.notes_outlined,
+                    'Catatan SO',
+                    order['so_notes'],
                   ),
                 ],
-              ),
+              ],
             ),
-          ] else ...[
-            _sectionTitle('Detail Pelaksanaan'),
-            GlassWidget(
-              borderRadius: 16,
-              blurSigma: 16,
-              tint: AppColors.glassWhite,
-              borderColor: AppColors.glassBorder,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_selectedPackage != null)
-                    _infoRow(
-                      Icons.inventory_2_outlined,
-                      'Paket Terpilih',
-                      _selectedPackage!['name'] ?? '-',
-                    ),
-                  if (_selectedPackage != null) const SizedBox(height: 8),
-                  _infoRow(
-                    Icons.calendar_month_outlined,
-                    'Jadwal Pemakaman',
-                    _formatDate(order['scheduled_at']),
-                  ),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    Icons.timer_outlined,
-                    'Estimasi Durasi',
-                    '${order['estimated_duration_hours'] ?? '-'} Jam',
-                  ),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    Icons.payments_outlined,
-                    'Harga Akhir',
-                    _currency.format(
-                      double.tryParse(
-                            order['final_price']?.toString() ?? '0',
-                          ) ??
-                          0,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _infoRow(
-                    Icons.people_outline,
-                    'Estimasi Tamu',
-                    '${order['estimated_guests'] ?? '-'} Orang',
-                  ),
-                  if (order['so_notes'] != null) ...[
-                    const SizedBox(height: 8),
-                    _infoRow(
-                      Icons.notes_outlined,
-                      'Catatan SO',
-                      order['so_notes'],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
+          ),
           const SizedBox(height: 40),
         ],
       ),

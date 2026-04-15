@@ -149,7 +149,7 @@ class User extends Authenticatable
     /** Helper: is this user a purchasing/finance role */
     public function isPurchasing(): bool
     {
-        return in_array($this->role, ['finance', 'purchasing'], true);
+        return in_array($this->role, [UserRole::FINANCE->value, UserRole::PURCHASING->value], true);
     }
 
     /** Helper: is this a viewer role */

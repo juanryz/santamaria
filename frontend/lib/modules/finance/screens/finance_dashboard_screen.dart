@@ -6,6 +6,26 @@ import '../../../core/theme/app_theme.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../auth/screens/unified_login_screen.dart';
+import 'finance_report_screen.dart';
+import 'finance_transaction_screen.dart';
+import 'finance_receivables_screen.dart';
+
+const Map<String, String> categoryLabels = {
+  'jasa_funeral': 'Jasa Funeral',
+  'paket_dasar': 'Paket Dasar',
+  'paket_premium': 'Paket Premium',
+  'paket_eksklusif': 'Paket Eksklusif',
+  'add_on': 'Add-On',
+  'pengadaan': 'Pengadaan',
+  'upah_tukang_jaga': 'Upah Tukang Jaga',
+  'vendor_dekor': 'Vendor Dekorasi',
+  'vendor_konsumsi': 'Vendor Konsumsi',
+  'vendor_pemuka_agama': 'Vendor Pemuka Agama',
+  'vendor_foto': 'Vendor Foto',
+  'vendor_angkat_peti': 'Vendor Angkat Peti',
+  'operasional': 'Operasional',
+  'manual_correction': 'Koreksi Manual',
+};
 
 class FinanceDashboardScreen extends StatefulWidget {
   const FinanceDashboardScreen({super.key});
@@ -16,17 +36,15 @@ class FinanceDashboardScreen extends StatefulWidget {
 
 class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
   final ApiClient _apiClient = ApiClient();
+
   bool _isLoading = true;
-  int _tab = 0; // 0=Orders, 1=Pending PO, 2=Riwayat PO
+  String? _error;
 
-  // Orders (consumer payment tracking)
-  List<dynamic> _orders = [];
-
-  // Purchase Orders
-  List<dynamic> _pendingPOs = [];
-  List<dynamic> _historyPOs = [];
-
-  String? _processingId;
+  Map<String, dynamic> _dashData = {};
+  Map<String, dynamic> _thisMonth = {};
+  List<dynamic> _monthlyTrend = [];
+  List<dynamic> _receivables = [];
+  List<dynamic> _unpaidWages = [];
 
   static const _roleColor = AppColors.roleFinance;
 
@@ -35,6 +53,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
     symbol: 'Rp ',
     decimalDigits: 0,
   );
+  final _dateFormat = DateFormat('dd MMM yyyy', 'id_ID');
 
   @override
   void initState() {
@@ -44,455 +63,37 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
-
-    // Load orders
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
-      final ordersRes = await _apiClient.dio.get('/finance/orders');
+      final res = await _apiClient.dio.get('/finance/dashboard');
       if (!mounted) return;
-      final rawData = ordersRes.data;
-      List<dynamic> allOrders = [];
-      if (rawData is Map && rawData['data'] != null) {
-        final d = rawData['data'];
-        if (d is List) {
-          allOrders = d;
-        } else if (d is Map && d['data'] != null) {
-          allOrders = List<dynamic>.from(d['data']);
-        }
-      }
-      if (mounted) setState(() => _orders = allOrders);
-    } catch (_) {
-      // orders load failed silently — PO still loads
-    }
-
-    // Load purchase orders
-    try {
-      final poRes = await _apiClient.dio.get('/finance/purchase-orders');
-      if (!mounted) return;
-      if (poRes.data['success'] == true) {
-        final all = List<dynamic>.from(poRes.data['data'] ?? []);
-        if (mounted) {
-          setState(() {
-            _pendingPOs = all
-                .where((po) => po['status'] == 'pending_finance')
-                .toList();
-            _historyPOs = all
-                .where((po) => po['status'] != 'pending_finance')
-                .toList();
-          });
-        }
-      }
-    } catch (_) {
+      final data = res.data['data'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _dashData = data;
+        _thisMonth = (data['this_month'] as Map<String, dynamic>?) ?? {};
+        _monthlyTrend = (data['monthly_trend'] as List<dynamic>?) ?? [];
+        _receivables = (data['receivables'] as List<dynamic>?) ?? [];
+        _unpaidWages = (data['unpaid_wages'] as List<dynamic>?) ?? [];
+        _isLoading = false;
+      });
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Gagal memuat data PO.')));
-      }
-    }
-
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Future<void> _approvePayment(String orderId, String orderNumber) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Konfirmasi Pembayaran?'),
-        content: Text('Tandai payment order $orderNumber sebagai LUNAS?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusSuccess,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Konfirmasi Lunas'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _processingId = orderId);
-    try {
-      final res = await _apiClient.dio.put(
-        '/finance/orders/$orderId/payment/verify',
-        data: {},
-      );
-      if (!mounted) return;
-      if (res.data != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pembayaran dikonfirmasi lunas.')),
-        );
-        await _loadData();
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal mengonfirmasi pembayaran.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _processingId = null);
-    }
-  }
-
-  Future<void> _viewPaymentProof(String orderId, String orderNumber) async {
-    try {
-      final res = await _apiClient.dio.get(
-        '/finance/orders/$orderId/payment-proof',
-      );
-      if (!mounted) return;
-      final data = res.data as Map<String, dynamic>?;
-      final proofUrl = data?['payment_proof_url'] as String?;
-      final uploadedAt = data?['payment_proof_uploaded_at'] as String?;
-      final finalPrice = data?['final_price'];
-
-      if (proofUrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bukti payment belum diupload.')),
-        );
-        return;
-      }
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => Dialog(
-          backgroundColor: AppColors.background,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Bukti Payment — $orderNumber',
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textHint),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                if (finalPrice != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Nilai: ${_currency.format(double.tryParse(finalPrice.toString()) ?? 0)}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-                if (uploadedAt != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Diupload: ${_formatDate(uploadedAt)}',
-                    style: const TextStyle(
-                      color: AppColors.textHint,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    proofUrl,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (_, child, progress) => progress == null
-                        ? child
-                        : const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(32),
-                              child: CircularProgressIndicator(),
-                            ),
-                          ),
-                    errorBuilder: (_, _, err) => const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.broken_image_outlined,
-                            color: AppColors.textHint,
-                            size: 48,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Gagal memuat gambar.',
-                            style: TextStyle(color: AppColors.textHint),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal memuat bukti payment.')),
-        );
+        setState(() {
+          _error = 'Gagal memuat data dashboard. Periksa koneksi Anda.';
+          _isLoading = false;
+        });
       }
     }
   }
 
-  String _formatDate(String iso) {
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return iso;
-    return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
+  double _toDouble(dynamic v) => double.tryParse(v?.toString() ?? '0') ?? 0.0;
 
-  Future<void> _rejectPayment(String orderId, String orderNumber) async {
-    final reasonCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tolak Bukti Payment?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Tolak bukti payment untuk order $orderNumber?'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Alasan penolakan (wajib)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusDanger,
-            ),
-            onPressed: () {
-              if (reasonCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Tolak'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _processingId = orderId);
-    try {
-      await _apiClient.dio.put(
-        '/finance/orders/$orderId/payment/reject',
-        data: {'reason': reasonCtrl.text.trim()},
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bukti ditolak. Konsumen diminta upload ulang.'),
-        ),
-      );
-      await _loadData();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal menolak bukti payment.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _processingId = null);
-    }
-  }
-
-  Future<void> _approvePO(String poId, String itemName) async {
-    final notesController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Setujui PO?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Setujui Purchase Order untuk $itemName?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(
-                labelText: 'Catatan (opsional)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusSuccess,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Setujui'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-    setState(() => _processingId = poId);
-    try {
-      final response = await _apiClient.dio.put(
-        '/finance/purchase-orders/$poId/approve',
-        data: {'notes': notesController.text.trim()},
-      );
-      if (!mounted) return;
-      if (response.data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PO berhasil disetujui. Gudang telah dinotifikasi.'),
-          ),
-        );
-        await _loadData();
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Gagal menyetujui PO.')));
-      }
-    } finally {
-      if (mounted) setState(() => _processingId = null);
-    }
-  }
-
-  Future<void> _rejectPO(String poId, String itemName) async {
-    final notesController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tolak PO?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Tolak Purchase Order untuk $itemName?'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: notesController,
-              decoration: const InputDecoration(
-                labelText: 'Alasan penolakan (wajib)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusDanger,
-            ),
-            onPressed: () {
-              if (notesController.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Tolak'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-    setState(() => _processingId = poId);
-    try {
-      final response = await _apiClient.dio.put(
-        '/finance/purchase-orders/$poId/reject',
-        data: {'notes': notesController.text.trim()},
-      );
-      if (!mounted) return;
-      if (response.data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PO ditolak. Gudang telah dinotifikasi.'),
-          ),
-        );
-        await _loadData();
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Gagal menolak PO.')));
-      }
-    } finally {
-      if (mounted) setState(() => _processingId = null);
-    }
-  }
-
-  // ─── Status helpers ────────────────────────────────────────────
-  Color _poStatusColor(String s) => switch (s) {
-    'approved_finance' => AppColors.statusSuccess,
-    'rejected' => AppColors.statusDanger,
-    'pending_finance' => AppColors.statusWarning,
-    _ => AppColors.textHint,
-  };
-
-  String _poStatusLabel(String s) => switch (s) {
-    'approved_finance' => 'Disetujui',
-    'rejected' => 'Ditolak',
-    'pending_finance' => 'Menunggu Review',
-    _ => s,
-  };
-
-  Color _paymentStatusColor(String s) => switch (s) {
-    'proof_uploaded' => AppColors.statusWarning,
-    'paid' => AppColors.statusSuccess,
-    'proof_rejected' => AppColors.statusDanger,
-    'unpaid' => AppColors.textHint,
-    _ => AppColors.textHint,
-  };
-
-  String _paymentStatusLabel(String s) => switch (s) {
-    'proof_uploaded' => 'Bukti Diupload',
-    'paid' => 'Lunas ✓',
-    'proof_rejected' => 'Ditolak',
-    'unpaid' => 'Belum Bayar',
-    _ => s,
-  };
-
-  // ─── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final userName = context.read<AuthProvider>().user?['name'] ?? 'Finance';
-
-    final proofUploaded = _orders
-        .where((o) => o['payment_status'] == 'proof_uploaded')
-        .length;
-    final pendingPOCount = _pendingPOs.length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -519,85 +120,29 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
-                    Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Finance Portal',
-                              style: TextStyle(
-                                color: _roleColor,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1.2,
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Halo, $userName',
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        GlassWidget(
-                          borderRadius: 12,
-                          blurSigma: 10,
-                          tint: AppColors.glassWhite,
-                          borderColor: AppColors.glassBorder,
-                          padding: const EdgeInsets.all(8),
-                          onTap: () async {
-                            final nav = Navigator.of(context);
-                            await context.read<AuthProvider>().logout();
-                            if (!mounted) return;
-                            nav.pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                builder: (_) => const UnifiedLoginScreen(),
-                              ),
-                              (_) => false,
-                            );
-                          },
-                          child: const Icon(
-                            Icons.logout,
-                            color: AppColors.textSecondary,
-                            size: 20,
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildHeader(userName),
                     const SizedBox(height: 24),
-
-                    // Tab selector (3 tabs)
-                    GlassWidget(
-                      borderRadius: 50,
-                      blurSigma: 10,
-                      tint: AppColors.glassWhite,
-                      borderColor: AppColors.glassBorder,
-                      padding: const EdgeInsets.all(4),
-                      child: Row(
-                        children: [
-                          _pillBtn('Payment Order', 0, badge: proofUploaded),
-                          _pillBtn('Perlu Review PO', 1, badge: pendingPOCount),
-                          _pillBtn('Riwayat PO', 2),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
                     if (_isLoading)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_tab == 0)
-                      _buildOrdersTab()
-                    else if (_tab == 1)
-                      _buildPendingPOs()
-                    else
-                      _buildHistoryPOs(),
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(48),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_error != null)
+                      _buildError()
+                    else ...[
+                      _buildStatCards(),
+                      const SizedBox(height: 28),
+                      _buildMonthlyTrendTable(),
+                      const SizedBox(height: 28),
+                      _buildReceivablesSection(),
+                      const SizedBox(height: 28),
+                      _buildUnpaidWagesSection(),
+                      const SizedBox(height: 28),
+                      _buildQuickActions(),
+                      const SizedBox(height: 40),
+                    ],
                   ],
                 ),
               ),
@@ -608,513 +153,721 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
     );
   }
 
-  // ─── ORDERS TAB ────────────────────────────────────────────────
-
-  Widget _buildOrdersTab() {
-    if (_orders.isEmpty) {
-      return GlassWidget(
-        borderRadius: 16,
-        blurSigma: 16,
-        tint: AppColors.glassWhite,
-        borderColor: AppColors.glassBorder,
-        padding: const EdgeInsets.all(24),
-        child: const Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: AppColors.textHint),
-            SizedBox(width: 12),
-            Text(
-              'Tidak ada order dengan bukti payment.',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-      );
-    }
-    return Column(
-      children: _orders
-          .map((order) => _buildOrderCard(Map<String, dynamic>.from(order)))
-          .toList(),
-    );
-  }
-
-  Widget _buildOrderCard(Map<String, dynamic> order) {
-    final orderId = order['id'] as String? ?? '';
-    final orderNumber = order['order_number'] as String? ?? '-';
-    final paymentStatus = order['payment_status'] as String? ?? 'unpaid';
-    final finalPrice = order['final_price'];
-    final pkg = order['package'] as Map<String, dynamic>?;
-    final soUser = order['so_user'] as Map<String, dynamic>?;
-    final picName = order['pic_name'] as String? ?? '-';
-    final sc = _paymentStatusColor(paymentStatus);
-    final isProofUploaded = paymentStatus == 'proof_uploaded';
-    final isProcessing = _processingId == orderId;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: GlassWidget(
-        borderRadius: 20,
-        blurSigma: 16,
-        tint: isProofUploaded
-            ? AppColors.statusWarning.withValues(alpha: 0.04)
-            : AppColors.glassWhite,
-        borderColor: isProofUploaded
-            ? AppColors.statusWarning.withValues(alpha: 0.4)
-            : AppColors.glassBorder,
-        padding: const EdgeInsets.all(16),
-        child: Column(
+  Widget _buildHeader(String userName) {
+    return Row(
+      children: [
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row
-            Row(
-              children: [
-                if (isProofUploaded)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 6),
-                    child: Icon(
-                      Icons.notification_important_rounded,
-                      color: AppColors.statusWarning,
-                      size: 18,
-                    ),
-                  ),
-                Expanded(
-                  child: Text(
-                    orderNumber,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sc.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _paymentStatusLabel(paymentStatus),
-                    style: TextStyle(
-                      color: sc,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _infoRow('PIC', picName),
-            if (pkg != null) _infoRow('Paket', pkg['name'] ?? '-'),
-            if (soUser != null) _infoRow('SO', soUser['name'] ?? '-'),
-            if (finalPrice != null)
-              _infoRow(
-                'Nilai',
-                _currency.format(double.tryParse(finalPrice.toString()) ?? 0),
-              ),
-            // Lihat bukti — tampil jika payment_status bukan unpaid
-            if (paymentStatus != 'unpaid') ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _viewPaymentProof(orderId, orderNumber),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _roleColor,
-                    side: const BorderSide(color: AppColors.roleFinance),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  icon: const Icon(Icons.receipt_long_outlined, size: 16),
-                  label: const Text(
-                    'Lihat Bukti Payment',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                ),
-              ),
-            ],
-            // Action buttons for proof_uploaded
-            if (isProofUploaded) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: isProcessing
-                          ? null
-                          : () => _rejectPayment(orderId, orderNumber),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.statusDanger,
-                        side: const BorderSide(color: AppColors.statusDanger),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: isProcessing
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.close_rounded, size: 16),
-                      label: const Text(
-                        'Tolak',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: isProcessing
-                          ? null
-                          : () => _approvePayment(orderId, orderNumber),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.statusSuccess,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: isProcessing
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.check_rounded, size: 16),
-                      label: const Text(
-                        'Konfirmasi Lunas',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── PO Tabs ───────────────────────────────────────────────────
-
-  Widget _buildPendingPOs() {
-    if (_pendingPOs.isEmpty) {
-      return GlassWidget(
-        borderRadius: 16,
-        blurSigma: 16,
-        tint: AppColors.glassWhite,
-        borderColor: AppColors.glassBorder,
-        padding: const EdgeInsets.all(24),
-        child: const Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: AppColors.textHint),
-            SizedBox(width: 12),
             Text(
-              'Tidak ada PO untuk ditampilkan.',
-              style: TextStyle(color: AppColors.textSecondary),
+              'Finance Dashboard',
+              style: TextStyle(
+                color: _roleColor,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                fontSize: 12,
+              ),
             ),
-          ],
-        ),
-      );
-    }
-    return Column(
-      children: _pendingPOs
-          .map(
-            (po) =>
-                _buildPOCard(Map<String, dynamic>.from(po), isPending: true),
-          )
-          .toList(),
-    );
-  }
-
-  Widget _buildHistoryPOs() {
-    if (_historyPOs.isEmpty) {
-      return GlassWidget(
-        borderRadius: 16,
-        blurSigma: 16,
-        tint: AppColors.glassWhite,
-        borderColor: AppColors.glassBorder,
-        padding: const EdgeInsets.all(24),
-        child: const Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: AppColors.textHint),
-            SizedBox(width: 12),
+            const SizedBox(height: 4),
             Text(
-              'Tidak ada riwayat PO.',
-              style: TextStyle(color: AppColors.textSecondary),
+              'Halo, $userName',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ],
         ),
-      );
-    }
-    return Column(
-      children: _historyPOs
-          .map((po) => _buildPOCard(Map<String, dynamic>.from(po)))
-          .toList(),
-    );
-  }
-
-  Widget _buildPOCard(Map<String, dynamic> po, {bool isPending = false}) {
-    final poId = po['id'] as String? ?? '';
-    final itemName = po['item_name'] as String? ?? 'Item';
-    final status = po['status'] as String? ?? '';
-    final supplierName = po['supplier_name'] as String?;
-    final financeNotes = po['finance_notes'] as String?;
-    final isProcessing = _processingId == poId;
-    final sc = _poStatusColor(status);
-
-    final quotes = List<dynamic>.from(po['supplier_quotes'] ?? []);
-    final acceptedQuote = quotes.cast<Map<String, dynamic>?>().firstWhere(
-      (q) => q?['status'] == 'accepted',
-      orElse: () => null,
-    );
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: GlassWidget(
-        borderRadius: 20,
-        blurSigma: 16,
-        tint: AppColors.glassWhite,
-        borderColor: AppColors.glassBorder,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    itemName,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sc.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _poStatusLabel(status),
-                    style: TextStyle(
-                      color: sc,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _infoRow('Qty', '${po['quantity']} ${po['unit']}'),
-            _infoRow('Harga Estimasi', 'Rp ${po['proposed_price']}'),
-            if (po['market_price'] != null)
-              _infoRow('Harga Pasar (AI)', 'Rp ${po['market_price']}'),
-            if (acceptedQuote != null) ...[
-              const Divider(height: 20),
-              _infoRow(
-                'Supplier',
-                supplierName ?? acceptedQuote['supplier']?['name'] ?? '-',
-              ),
-              _infoRow('Harga Penawaran', 'Rp ${acceptedQuote['quote_price']}'),
-            ],
-            if (po['ai_analysis'] != null) ...[
-              const Divider(height: 20),
-              const Row(
-                children: [
-                  Icon(
-                    Icons.auto_awesome,
-                    color: AppColors.statusWarning,
-                    size: 14,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Analisis AI',
-                    style: TextStyle(
-                      color: AppColors.statusWarning,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                po['ai_analysis'] as String,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            if (financeNotes != null && financeNotes.isNotEmpty) ...[
-              const Divider(height: 20),
-              _infoRow('Catatan Finance', financeNotes),
-            ],
-            if (isPending) ...[
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: isProcessing
-                          ? null
-                          : () => _rejectPO(poId, itemName),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.statusDanger,
-                        side: const BorderSide(color: AppColors.statusDanger),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: isProcessing
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.close_rounded, size: 16),
-                      label: const Text(
-                        'Tolak',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: isProcessing
-                          ? null
-                          : () => _approvePO(poId, itemName),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.statusSuccess,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      icon: isProcessing
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.check_rounded, size: 16),
-                      label: const Text(
-                        'Setujui',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Helpers ───────────────────────────────────────────────────
-
-  Widget _pillBtn(String label, int index, {int badge = 0}) {
-    final isSelected = _tab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _tab = index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? _roleColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(50),
+        const Spacer(),
+        GlassWidget(
+          borderRadius: 12,
+          blurSigma: 10,
+          tint: AppColors.glassWhite,
+          borderColor: AppColors.glassBorder,
+          padding: const EdgeInsets.all(8),
+          onTap: () async {
+            final nav = Navigator.of(context);
+            await context.read<AuthProvider>().logout();
+            if (!mounted) return;
+            nav.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
+              (_) => false,
+            );
+          },
+          child: const Icon(
+            Icons.logout,
+            color: AppColors.textSecondary,
+            size: 20,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 11,
-                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildError() {
+    return GlassWidget(
+      borderRadius: 16,
+      blurSigma: 10,
+      tint: AppColors.statusDanger.withValues(alpha: 0.05),
+      borderColor: AppColors.statusDanger.withValues(alpha: 0.2),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.error_outline,
+            color: AppColors.statusDanger,
+            size: 36,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _loadData,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _roleColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-              if (badge > 0) ...[
-                const SizedBox(width: 4),
-                Container(
-                  width: 18,
-                  height: 18,
-                  decoration: const BoxDecoration(
-                    color: AppColors.statusDanger,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
+            ),
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Coba Lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCards() {
+    final income = _toDouble(_thisMonth['income']);
+    final expense = _toDouble(_thisMonth['expense']);
+    final profit = _toDouble(_thisMonth['profit'] ?? (income - expense));
+    final lastIncome = _toDouble(
+      _thisMonth['last_month_income'] ?? _dashData['last_month']?['income'],
+    );
+    final incomeDiff = lastIncome > 0
+        ? (income - lastIncome) / lastIncome
+        : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Bulan Ini',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _statCard(
+                label: 'Pendapatan',
+                value: _currency.format(income),
+                valueColor: AppColors.statusSuccess,
+                icon: Icons.trending_up,
+                iconColor: AppColors.statusSuccess,
+                badge: lastIncome > 0 ? _buildArrow(incomeDiff) : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _statCard(
+                label: 'Pengeluaran',
+                value: _currency.format(expense),
+                valueColor: AppColors.statusDanger,
+                icon: Icons.trending_down,
+                iconColor: AppColors.statusDanger,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _statCard(
+                label: 'Laba Bersih',
+                value: _currency.format(profit.abs()),
+                valueColor: profit >= 0
+                    ? AppColors.statusSuccess
+                    : AppColors.statusDanger,
+                icon: profit >= 0
+                    ? Icons.account_balance_wallet
+                    : Icons.money_off,
+                iconColor: profit >= 0
+                    ? AppColors.statusSuccess
+                    : AppColors.statusDanger,
+                prefix: profit < 0 ? '-' : null,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildArrow(double diff) {
+    final isUp = diff >= 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isUp ? Icons.arrow_upward : Icons.arrow_downward,
+          size: 10,
+          color: isUp ? AppColors.statusSuccess : AppColors.statusDanger,
+        ),
+        Text(
+          '${(diff.abs() * 100).toStringAsFixed(1)}%',
+          style: TextStyle(
+            fontSize: 9,
+            color: isUp ? AppColors.statusSuccess : AppColors.statusDanger,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard({
+    required String label,
+    required String value,
+    required Color valueColor,
+    required IconData icon,
+    required Color iconColor,
+    Widget? badge,
+    String? prefix,
+  }) {
+    return GlassWidget(
+      borderRadius: 16,
+      blurSigma: 10,
+      tint: AppColors.glassWhite,
+      borderColor: AppColors.glassBorder,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 16),
+              const Spacer(),
+              ?badge,
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${prefix ?? ''}$value',
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.textHint, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthlyTrendTable() {
+    if (_monthlyTrend.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '6 Bulan Terakhir',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        GlassWidget(
+          borderRadius: 16,
+          blurSigma: 10,
+          tint: AppColors.glassWhite,
+          borderColor: AppColors.glassBorder,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // Header row
+              Row(
+                children: const [
+                  Expanded(
+                    flex: 2,
                     child: Text(
-                      '$badge',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
+                      'Bulan',
+                      style: TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                ),
-              ],
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Pendapatan',
+                      style: TextStyle(
+                        color: AppColors.statusSuccess,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Pengeluaran',
+                      style: TextStyle(
+                        color: AppColors.statusDanger,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Laba',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 16),
+              ...(_monthlyTrend.take(6).map((m) {
+                final income = _toDouble(m['income']);
+                final expense = _toDouble(m['expense']);
+                final profit = income - expense;
+                final monthLabel = _monthAbbr(m['month']?.toString() ?? '');
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          monthLabel,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          _compactCurrency(income),
+                          style: const TextStyle(
+                            color: AppColors.statusSuccess,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          _compactCurrency(expense),
+                          style: const TextStyle(
+                            color: AppColors.statusDanger,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          _compactCurrency(profit.abs()),
+                          style: TextStyle(
+                            color: profit >= 0
+                                ? AppColors.statusSuccess
+                                : AppColors.statusDanger,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              })),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  String _monthAbbr(String ym) {
+    // expects "2025-01" or just month number
+    final parts = ym.split('-');
+    final month = int.tryParse(parts.length > 1 ? parts[1] : parts[0]) ?? 0;
+    const abbr = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    return month > 0 && month <= 12 ? abbr[month] : ym;
+  }
+
+  String _compactCurrency(double v) {
+    if (v >= 1000000) return 'Rp ${(v / 1000000).toStringAsFixed(1)}jt';
+    if (v >= 1000) return 'Rp ${(v / 1000).toStringAsFixed(0)}rb';
+    return 'Rp ${v.toStringAsFixed(0)}';
+  }
+
+  Widget _buildReceivablesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Piutang Belum Lunas',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            if (_receivables.isNotEmpty)
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FinanceReceivablesScreen(),
+                  ),
+                ),
+                child: Text(
+                  'Lihat Semua',
+                  style: TextStyle(color: _roleColor, fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_receivables.isEmpty)
+          GlassWidget(
+            borderRadius: 16,
+            blurSigma: 10,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(20),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  color: AppColors.statusSuccess,
+                  size: 18,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Tidak ada piutang outstanding',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          )
+        else
+          ...(_receivables.take(3).map((r) => _buildReceivableItem(r))),
+      ],
+    );
+  }
+
+  Widget _buildReceivableItem(dynamic r) {
+    final name = r['consumer_name'] as String? ?? '-';
+    final code = r['order_code'] as String? ?? '-';
+    final amount = _toDouble(r['amount']);
+    final days = (r['days_outstanding'] as int?) ?? 0;
+
+    Color chipColor;
+    if (days >= 30) {
+      chipColor = AppColors.statusDanger;
+    } else if (days >= 14) {
+      chipColor = AppColors.statusWarning;
+    } else {
+      chipColor = AppColors.statusInfo;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: GlassWidget(
+        borderRadius: 14,
+        blurSigma: 10,
+        tint: AppColors.glassWhite,
+        borderColor: AppColors.glassBorder,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    code,
+                    style: const TextStyle(
+                      color: AppColors.textHint,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _currency.format(amount),
+                  style: const TextStyle(
+                    color: AppColors.statusDanger,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: chipColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$days hari',
+                    style: TextStyle(
+                      color: chipColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _infoRow(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
+  Widget _buildUnpaidWagesSection() {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 130,
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
+        const Text(
+          'Upah Tukang Jaga Belum Dibayar',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
         ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
+        const SizedBox(height: 8),
+        if (_unpaidWages.isEmpty)
+          GlassWidget(
+            borderRadius: 16,
+            blurSigma: 10,
+            tint: AppColors.statusSuccess.withValues(alpha: 0.05),
+            borderColor: AppColors.statusSuccess.withValues(alpha: 0.2),
+            padding: const EdgeInsets.all(20),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: AppColors.statusSuccess,
+                  size: 18,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Semua upah sudah dibayar ✓',
+                  style: TextStyle(
+                    color: AppColors.statusSuccess,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...(_unpaidWages.map((w) => _buildWageItem(w))),
+      ],
+    );
+  }
+
+  Widget _buildWageItem(dynamic w) {
+    final name = w['tukang_jaga_name'] as String? ?? '-';
+    final wage = _toDouble(w['wage']);
+    final checkoutAt = w['checkout_at'] as String?;
+    String dateStr = '-';
+    if (checkoutAt != null) {
+      final dt = DateTime.tryParse(checkoutAt);
+      if (dt != null) dateStr = _dateFormat.format(dt);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: GlassWidget(
+        borderRadius: 14,
+        blurSigma: 10,
+        tint: AppColors.glassWhite,
+        borderColor: AppColors.glassBorder,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _roleColor.withValues(alpha: 0.1),
+              ),
+              child: Icon(Icons.person_outline, color: _roleColor, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Checkout: $dateStr',
+                    style: const TextStyle(
+                      color: AppColors.textHint,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              _currency.format(wage),
+              style: const TextStyle(
+                color: AppColors.statusWarning,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Aksi Cepat',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FinanceReportScreen(),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _roleColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: const Icon(Icons.bar_chart, size: 18),
+                label: const Text(
+                  'Laporan Bulanan',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FinanceTransactionScreen(),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandPrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: const Icon(Icons.receipt_long, size: 18),
+                label: const Text(
+                  'Semua Transaksi',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
-    ),
-  );
+    );
+  }
 }

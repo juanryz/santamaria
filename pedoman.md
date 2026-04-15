@@ -13041,3 +13041,568 @@ landing-page.html                          -- Standalone HTML (development/previ
 ```
 
 *Dilarang mengurangi atau memodifikasi prompt ini tanpa persetujuan owner proyek*
+
+---
+
+# SANTA MARIA — PATCH v1.29
+# Dynamic Roles, Provider Role per Item, Tukang Jaga Shift System, SAL Gate, Payment Bifurcation
+
+---
+
+## PERUBAHAN & PENAMBAHAN FITUR v1.29
+
+### 1. Dynamic Roles System
+
+Roles tidak lagi hardcoded sebagai PostgreSQL ENUM. Digantikan dengan tabel `roles` di database yang dapat dikelola oleh Super Admin secara dinamis.
+
+#### Tabel `roles`
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+slug VARCHAR(100) UNIQUE NOT NULL              -- snake_case, immutable untuk system roles
+label VARCHAR(100) NOT NULL                    -- nama tampil (bisa diubah)
+description TEXT NULLABLE
+is_system BOOLEAN DEFAULT FALSE               -- TRUE = tidak bisa dihapus
+is_active BOOLEAN DEFAULT TRUE
+-- Flags Kapabilitas
+can_have_inventory BOOLEAN DEFAULT FALSE      -- bisa kelola stok sendiri
+is_vendor BOOLEAN DEFAULT FALSE               -- role vendor eksternal
+is_viewer_only BOOLEAN DEFAULT FALSE          -- read-only access
+can_manage_orders BOOLEAN DEFAULT FALSE       -- bisa handle order
+receives_order_alarm BOOLEAN DEFAULT FALSE    -- terima alarm order baru
+-- Kustomisasi UI
+permissions JSONB DEFAULT '{}'               -- granular permissions
+color_hex VARCHAR(10) NULLABLE
+icon_name VARCHAR(50) NULLABLE
+sort_order INTEGER DEFAULT 0
+created_at TIMESTAMP
+updated_at TIMESTAMP
+```
+
+**18+ system roles** di-seed otomatis dengan `is_system = true`:
+`super_admin, consumer, service_officer, admin, gudang, finance, driver, dekor, konsumsi, supplier, owner, pemuka_agama, hrd, purchasing, viewer, tukang_foto, tukang_angkat_peti, tukang_jaga`
+
+`users.role` diubah dari PostgreSQL ENUM → `VARCHAR(100)` via migration.
+
+#### API Endpoints — Role Management (Super Admin)
+```
+GET    /v1/super-admin/roles              -- list semua role + user_count
+POST   /v1/super-admin/roles             -- buat custom role (is_system=false otomatis)
+PUT    /v1/super-admin/roles/{slug}      -- update (slug immutable untuk system role)
+DELETE /v1/super-admin/roles/{slug}      -- hapus custom role (block jika ada user aktif)
+GET    /v1/super-admin/roles/{slug}/users -- list user per role, paginated
+```
+
+**Aturan:**
+- Slug hanya boleh `^[a-z0-9_]+$`
+- System role tidak bisa dihapus, slug immutable
+- Custom role dengan user aktif tidak bisa dihapus
+- `users.is_viewer` di-sync dari `roles.is_viewer_only` saat create/update user
+
+#### File Baru
+```
+backend/app/Models/Role.php
+backend/app/Http/Controllers/SuperAdmin/RoleController.php
+database/migrations/2026_04_16_000002_create_roles_table_and_convert_users_role.php
+frontend/lib/modules/super_admin/screens/super_admin_role_management_screen.dart
+frontend/lib/shared/constants/role_constants.dart  -- RoleConstants class (single source of truth Flutter)
+```
+
+---
+
+### 2. Dynamic Provider Role per Package Item & Role-Agnostic Stock
+
+Setiap item dalam paket (`package_items`) kini memiliki `provider_role` — role mana yang menyediakan/mengelola item tersebut. Stock items juga memiliki `owner_role`.
+
+#### Perubahan Skema
+```sql
+-- package_items
+ALTER TABLE package_items ADD COLUMN provider_role VARCHAR(50);
+ALTER TABLE package_items ADD COLUMN fulfillment_notes TEXT;
+
+-- stock_items
+ALTER TABLE stock_items ADD COLUMN owner_role VARCHAR(50) DEFAULT 'gudang';
+
+-- order_checklists
+ALTER TABLE order_checklists ADD COLUMN provider_role VARCHAR(50);
+```
+
+#### API Endpoints — Role-Agnostic Stock (`/role-stock`)
+```
+GET    /v1/role-stock/items                          -- stok milik role user yang login
+POST   /v1/role-stock/items                          -- tambah item stok (cek can_have_inventory)
+PUT    /v1/role-stock/items/{id}                     -- update stok
+DELETE /v1/role-stock/items/{id}                     -- hapus
+GET    /v1/role-stock/orders/{orderId}/checklist     -- checklist item untuk role ini
+PUT    /v1/role-stock/checklist/{id}/check           -- centang selesai + auto-deduct stok
+PUT    /v1/role-stock/checklist/{id}/uncheck         -- batalkan
+```
+
+```
+GET    /v1/admin/provider-roles   -- list role yang bisa menjadi provider (can_have_inventory OR is_vendor OR gudang/purchasing)
+```
+
+**Checklist generation saat order dikonfirmasi:** grouping by `provider_role`, alarm dikirim per-role ke semua user role tersebut.
+
+#### File Baru
+```
+backend/app/Http/Controllers/RoleStock/RoleStockController.php
+database/migrations/2026_04_16_000001_add_provider_role_to_package_items.php
+frontend/lib/shared/screens/role_inventory_screen.dart    -- reusable stok per role
+frontend/lib/shared/screens/role_fulfillment_screen.dart  -- reusable checklist per role
+```
+
+---
+
+### 3. Form Persetujuan Layanan — Mandatory Gate Sebelum Konfirmasi Order
+
+SO tidak dapat mengkonfirmasi order tanpa ServiceAcceptanceLetter yang sudah ditandatangani penuh (PJ + SM Officer).
+
+**Perubahan `OrderController::confirm()`:**
+- Cek `ServiceAcceptanceLetter` dengan `isFullySigned()` → return 422 + `error_code: ACCEPTANCE_LETTER_REQUIRED` jika belum
+- `payment_method` wajib diisi (`cash` atau `transfer`)
+- SAL draft otomatis dibuat saat order dibuat (`OrderController::store()`)
+
+---
+
+### 4. Tukang Jaga Shift System
+
+Role baru `tukang_jaga` dengan sistem shift, check-in/checkout, upah dinamis, dan rantai konfirmasi penerimaan barang.
+
+#### Tabel Baru
+```sql
+-- Konfigurasi upah dinamis per shift type
+tukang_jaga_wage_configs: id, label, shift_type (pagi/siang/malam/full_day), rate, currency, is_active
+
+-- Shift per order
+tukang_jaga_shifts: id, order_id, shift_number, shift_type, scheduled_start, scheduled_end,
+  assigned_to UUID, checkin_at, checkout_at, checkin_verified_by, status (scheduled/active/completed/missed),
+  wage_config_id, wage_amount, wage_paid, notes
+
+-- Pengiriman barang ke tukang jaga
+tukang_jaga_item_deliveries: id, order_id, shift_id, delivered_by, delivered_by_role,
+  received_by, family_confirmed_by, status (delivered/received_by_jaga/confirmed_by_family),
+  delivered_at, received_at, family_confirmed_at, photos JSONB, notes
+
+-- Line items per pengiriman
+tukang_jaga_delivery_items: id, delivery_id, item_name, quantity, unit, notes
+```
+
+#### API Endpoints — Tukang Jaga
+```
+-- Tukang Jaga (role: tukang_jaga)
+GET    /v1/tukang-jaga/shifts                       -- shift saya
+GET    /v1/tukang-jaga/shifts/{id}                  -- detail shift
+POST   /v1/tukang-jaga/shifts/{id}/checkin          -- check-in (boleh 15 menit lebih awal)
+POST   /v1/tukang-jaga/shifts/{id}/checkout         -- checkout + hitung upah
+GET    /v1/tukang-jaga/orders/{orderId}/deliveries  -- pengiriman masuk ke saya
+POST   /v1/tukang-jaga/deliveries/{id}/receive      -- konfirmasi terima barang
+
+-- Driver (kirim ke tukang jaga)
+POST   /v1/driver/orders/{orderId}/deliver-to-jaga  -- buat delivery ke tukang jaga aktif
+
+-- Consumer (konfirmasi keluarga)
+GET    /v1/consumer/orders/{orderId}/deliveries     -- list pengiriman dari tukang jaga
+POST   /v1/consumer/deliveries/{id}/confirm         -- konfirmasi keluarga terima
+
+-- Admin (management)
+GET    /v1/admin/tukang-jaga/wage-configs           -- list konfigurasi upah
+POST   /v1/admin/tukang-jaga/wage-configs           -- buat konfigurasi upah baru
+PUT    /v1/admin/tukang-jaga/wage-configs/{id}      -- update
+GET    /v1/admin/orders/{orderId}/shifts             -- semua shift per order
+POST   /v1/admin/orders/{orderId}/shifts/generate   -- generate otomatis: {days, shifts_per_day, shift_types[], wage_config_id}
+PUT    /v1/admin/shifts/{id}/assign                 -- assign tukang jaga + alarm FCM
+```
+
+**Rantai konfirmasi barang:**
+`Driver kirim → Tukang Jaga konfirmasi terima (requires active checkin) → Keluarga konfirmasi`
+
+**Upah:**
+- Dihitung otomatis saat checkout berdasarkan `wage_config.rate` sesuai `shift_type`
+- Upah dikirim alarm ke Purchasing untuk proses pembayaran
+
+#### File Baru
+```
+backend/app/Models/TukangJagaShift.php
+backend/app/Models/TukangJagaWageConfig.php
+backend/app/Models/TukangJagaItemDelivery.php
+backend/app/Models/TukangJagaDeliveryItem.php
+backend/app/Http/Controllers/TukangJaga/ShiftController.php
+backend/app/Http/Controllers/TukangJaga/DeliveryController.php
+backend/app/Http/Controllers/Driver/TukangJagaDeliveryController.php
+backend/app/Http/Controllers/Consumer/FamilyDeliveryController.php
+backend/app/Http/Controllers/Admin/TukangJagaManagementController.php
+database/migrations/2026_04_16_000003_create_tukang_jaga_tables.php
+```
+
+**Flutter screens pending (belum diimplementasikan):**
+- `frontend/lib/modules/tukang_jaga/screens/tukang_jaga_shift_list_screen.dart`
+- `frontend/lib/modules/tukang_jaga/screens/tukang_jaga_checkin_screen.dart`
+- `frontend/lib/modules/tukang_jaga/screens/tukang_jaga_receive_delivery_screen.dart`
+- `frontend/lib/modules/consumer/screens/consumer_delivery_confirmation_screen.dart`
+- `frontend/lib/modules/driver/screens/driver_deliver_to_jaga_screen.dart`
+- `frontend/lib/modules/admin/screens/admin_shift_management_screen.dart`
+- `frontend/lib/modules/admin/screens/admin_wage_config_screen.dart`
+
+---
+
+### 5. Payment Method Bifurcation (Cash vs Transfer)
+
+```sql
+-- orders table tambahan
+ALTER TABLE orders ADD COLUMN cash_received_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN cash_received_by UUID REFERENCES users(id);
+```
+
+**Aturan:**
+- `payment_method = 'cash'` → Finance cukup mark `POST /finance/orders/{id}/cash-paid`, tidak perlu upload bukti
+- `payment_method = 'transfer'` → alur bukti transfer tetap seperti biasa
+- `payment_method` wajib diisi saat SO konfirmasi order
+
+```
+POST /v1/finance/orders/{id}/cash-paid   -- mark cash paid (hanya untuk cash order)
+```
+
+---
+
+### 6. Ringkasan File Baru / Diubah v1.29
+
+```
+-- Backend (Baru)
+database/migrations/2026_04_16_000001_add_provider_role_to_package_items.php
+database/migrations/2026_04_16_000002_create_roles_table_and_convert_users_role.php
+database/migrations/2026_04_16_000003_create_tukang_jaga_tables.php
+database/migrations/2026_04_16_000004_add_payment_method_gate_to_orders.php
+app/Models/Role.php
+app/Models/TukangJagaShift.php
+app/Models/TukangJagaWageConfig.php
+app/Models/TukangJagaItemDelivery.php
+app/Models/TukangJagaDeliveryItem.php
+app/Http/Controllers/SuperAdmin/RoleController.php
+app/Http/Controllers/RoleStock/RoleStockController.php
+app/Http/Controllers/TukangJaga/ShiftController.php
+app/Http/Controllers/TukangJaga/DeliveryController.php
+app/Http/Controllers/Driver/TukangJagaDeliveryController.php
+app/Http/Controllers/Consumer/FamilyDeliveryController.php
+app/Http/Controllers/Admin/TukangJagaManagementController.php
+
+-- Backend (Diubah)
+app/Enums/UserRole.php                   -- tambah TUKANG_JAGA case
+app/Models/PackageItem.php               -- tambah provider_role, fulfillment_notes
+app/Models/StockItem.php                 -- tambah owner_role
+app/Http/Controllers/SuperAdmin/UserController.php  -- role validation via DB
+app/Http/Controllers/ServiceOfficer/OrderController.php  -- SAL gate, payment_method
+app/Http/Controllers/Finance/ConsumerPaymentController.php  -- cash-paid endpoint
+app/Services/NotificationService.php    -- fix hardcoded role strings
+app/Services/OrderAutoGenerateService.php -- fix hardcoded role strings
+app/Http/Controllers/Admin/PackageController.php -- provider_role support
+routes/api.php                           -- semua route baru
+
+-- Frontend (Baru)
+lib/shared/constants/role_constants.dart
+lib/shared/screens/role_inventory_screen.dart
+lib/shared/screens/role_fulfillment_screen.dart
+lib/modules/super_admin/screens/super_admin_role_management_screen.dart
+```
+
+---
+
+# SANTA MARIA — PATCH v1.30
+# Laporan Keuangan Otomatis, Koreksi Manual, Export PDF/Excel
+
+---
+
+## LATAR BELAKANG
+
+Santa Maria adalah perusahaan yang sudah besar dan kompleks. Seluruh transaksi keuangan — pembayaran consumer, pengadaan (procurement), upah tukang jaga, pengeluaran vendor — sudah tercatat di database. Sistem laporan keuangan harus **otomatis mengagregasi data yang sudah ada**, tanpa input manual, namun Finance/Owner dapat **mengoreksi** dengan audit trail.
+
+**Prinsip:**
+- Tidak ada input ulang data — semua dari transaksi yang sudah ada
+- Laporan real-time, selalu up-to-date
+- Koreksi manual harus meninggalkan jejak audit (siapa, kapan, alasan)
+- Export ke PDF dan Excel
+- Dinamis: filter periode, kategori layanan, role vendor, dll
+
+---
+
+## SKEMA DATABASE
+
+### Tabel `financial_transactions`
+
+Tabel pusat agregasi keuangan. Di-populate otomatis oleh event: order confirmed, payment verified, procurement approved, wage paid, dll.
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+transaction_type VARCHAR(50) NOT NULL
+  -- INCOME: order_payment
+  -- EXPENSE: procurement, tukang_jaga_wage, vendor_payment, operational
+  -- ADJUSTMENT: manual_correction
+
+reference_type VARCHAR(50) NULLABLE    -- 'order', 'procurement', 'shift', 'vendor', dll
+reference_id UUID NULLABLE            -- FK ke tabel sumber
+order_id UUID NULLABLE REFERENCES orders(id) ON DELETE SET NULL
+
+amount DECIMAL(15,2) NOT NULL         -- selalu positif
+direction ENUM('in','out') NOT NULL   -- in = pendapatan, out = pengeluaran
+currency VARCHAR(10) DEFAULT 'IDR'
+
+category VARCHAR(100) NOT NULL
+  -- Kategori pendapatan: 'jasa_funeral', 'paket_dasar', 'paket_premium', 'paket_eksklusif', 'add_on'
+  -- Kategori pengeluaran: 'pengadaan', 'upah_tukang_jaga', 'vendor_dekor', 'vendor_konsumsi',
+  --                       'vendor_pemuka_agama', 'vendor_foto', 'vendor_angkat_peti', 'operasional'
+
+description TEXT NULLABLE
+transaction_date DATE NOT NULL        -- tanggal transaksi terjadi
+recorded_at TIMESTAMP DEFAULT now()  -- kapan dicatat di sistem
+recorded_by UUID REFERENCES users(id) ON DELETE SET NULL
+
+-- Untuk koreksi manual
+is_correction BOOLEAN DEFAULT FALSE
+original_transaction_id UUID NULLABLE REFERENCES financial_transactions(id)
+correction_reason TEXT NULLABLE
+corrected_at TIMESTAMP NULLABLE
+corrected_by UUID NULLABLE REFERENCES users(id)
+
+-- Metadata
+metadata JSONB DEFAULT '{}'          -- data tambahan (nama almarhum, SO, dll)
+is_void BOOLEAN DEFAULT FALSE        -- dibatalkan
+voided_at TIMESTAMP NULLABLE
+voided_by UUID NULLABLE REFERENCES users(id)
+void_reason TEXT NULLABLE
+
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+INDEX: (transaction_date), (transaction_type), (category), (order_id), (direction), (is_void)
+```
+
+### Tabel `financial_reports`
+
+Cache laporan yang di-generate. Dihitung ulang otomatis setiap jam via scheduler.
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+report_type VARCHAR(50) NOT NULL      -- 'monthly_summary', 'annual_summary', 'order_summary'
+period_year INTEGER NOT NULL
+period_month INTEGER NULLABLE         -- NULL untuk annual
+generated_at TIMESTAMP DEFAULT now()
+data JSONB NOT NULL                  -- hasil agregasi lengkap
+
+-- Koreksi manual pada ringkasan
+manual_notes TEXT NULLABLE
+reviewed_by UUID NULLABLE REFERENCES users(id)
+reviewed_at TIMESTAMP NULLABLE
+
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+UNIQUE: (report_type, period_year, period_month)
+```
+
+---
+
+## OTOMASI — Event Triggers ke `financial_transactions`
+
+| Event | transaction_type | direction | category | Dipicu oleh |
+|-------|-----------------|-----------|----------|-------------|
+| Order payment verified (transfer) | `order_payment` | `in` | `jasa_funeral` / sesuai paket | `ConsumerPaymentController::verify()` |
+| Order payment cash confirmed | `order_payment` | `in` | `jasa_funeral` / sesuai paket | `ConsumerPaymentController::markCashPaid()` |
+| Procurement PO approved | `procurement` | `out` | `pengadaan` | `ProcurementController::approve()` |
+| Tukang jaga checkout | `tukang_jaga_wage` | `out` | `upah_tukang_jaga` | `ShiftController::checkout()` |
+| Vendor payment approved | `vendor_payment` | `out` | `vendor_[role]` | `VendorPaymentController::approve()` |
+| Manual correction | `manual_correction` | `in`/`out` | bebas | Finance/Owner via API |
+
+**Implementasi:** Buat `FinancialTransactionService::record(array $data)` — dipanggil dari masing-masing controller. Bukan event listener untuk menghindari silent failure.
+
+---
+
+## API ENDPOINTS — Laporan Keuangan
+
+```
+-- Semua endpoint ini role: finance, owner
+
+-- Dashboard ringkasan
+GET /v1/finance/dashboard
+  Response: {
+    this_month: { income, expense, profit, order_count },
+    last_month: { income, expense, profit, order_count },
+    this_year: { income, expense, profit },
+    pending_payments: [{ order_id, consumer_name, amount, due_date }],
+    unpaid_wages: [{ shift_id, tukang_jaga_name, amount }]
+  }
+
+-- Laporan per periode
+GET /v1/finance/reports/summary
+  Query: ?year=2026&month=4         -- month opsional (kosong = annual)
+  Response: {
+    period, income_total, expense_total, profit,
+    income_by_category: [{category, total}],
+    expense_by_category: [{category, total}],
+    order_count, avg_order_value
+  }
+
+-- Laporan per order
+GET /v1/finance/reports/orders
+  Query: ?from=2026-01-01&to=2026-12-31&status=paid
+  Response: paginated list [{
+    order_id, order_code, consumer_name, deceased_name,
+    package_name, total_amount, paid_at, payment_method,
+    expense_total, profit
+  }]
+
+-- Laporan piutang (belum lunas)
+GET /v1/finance/reports/receivables
+  Response: [{
+    order_id, order_code, consumer_name, total_amount,
+    payment_method, order_date, days_outstanding
+  }]
+
+-- Laporan pengeluaran
+GET /v1/finance/reports/expenses
+  Query: ?from=&to=&category=
+  Response: paginated [{
+    date, transaction_type, category, description, amount, reference
+  }]
+
+-- Raw transactions (untuk audit)
+GET /v1/finance/transactions
+  Query: ?from=&to=&type=&category=&direction=&search=&page=
+  Response: paginated financial_transactions
+
+-- Koreksi manual (Finance/Owner only)
+POST /v1/finance/transactions/correction
+  Body: { direction, amount, category, description, transaction_date,
+          original_transaction_id (nullable), correction_reason }
+
+-- Void transaksi
+PUT /v1/finance/transactions/{id}/void
+  Body: { void_reason }
+
+-- Export
+GET /v1/finance/reports/export
+  Query: ?type=monthly_summary&year=2026&month=4&format=pdf
+  Query: ?type=order_list&from=&to=&format=xlsx
+  Response: file download (PDF via DomPDF, Excel via Laravel Excel / maatwebsite/excel)
+```
+
+---
+
+## FLUTTER — Screens Laporan Keuangan
+
+```
+lib/modules/finance/screens/
+  ├── finance_dashboard_screen.dart
+  │     -- Card: Pendapatan bulan ini vs bulan lalu (% change)
+  │     -- Card: Pengeluaran bulan ini
+  │     -- Card: Laba bersih
+  │     -- Chart: Bar chart pendapatan 6 bulan terakhir (fl_chart)
+  │     -- List: Piutang belum lunas
+  │     -- List: Upah tukang jaga belum dibayar
+  │
+  ├── finance_report_screen.dart
+  │     -- Dropdown: pilih tahun + bulan (atau annual)
+  │     -- Tabel summary: pendapatan/pengeluaran per kategori
+  │     -- Pie chart: komposisi pendapatan
+  │     -- Tombol Export PDF / Export Excel
+  │
+  ├── finance_order_report_screen.dart
+  │     -- Filter: date range, payment status
+  │     -- Tabel: per order (order code, consumer, amount, profit)
+  │     -- Tap order → detail transaksi order
+  │
+  ├── finance_transaction_list_screen.dart
+  │     -- Filter: type, category, direction, date range
+  │     -- List semua transaksi
+  │     -- FAB: Tambah koreksi manual
+  │     -- Long-press → void transaksi (dengan alasan)
+  │
+  └── finance_correction_form_screen.dart
+        -- Form koreksi manual
+        -- Input: arah (in/out), nominal, kategori, tanggal, deskripsi, alasan
+        -- Link ke transaksi asal (opsional)
+```
+
+---
+
+## BACKEND — Service & File Baru
+
+```
+-- Service
+app/Services/FinancialTransactionService.php
+  - record(array $data): FinancialTransaction
+  - voidTransaction(string $id, string $reason, User $by): void
+  - generateMonthlySummary(int $year, int $month): array
+  - generateAnnualSummary(int $year): array
+  - exportPdf(string $type, array $params): BinaryFileResponse
+  - exportExcel(string $type, array $params): BinaryFileResponse
+
+-- Controllers
+app/Http/Controllers/Finance/FinanceDashboardController.php
+app/Http/Controllers/Finance/FinanceReportController.php
+app/Http/Controllers/Finance/FinanceTransactionController.php
+
+-- Models
+app/Models/FinancialTransaction.php
+app/Models/FinancialReport.php
+
+-- Migrations
+database/migrations/2026_04_16_000005_create_financial_transactions_table.php
+database/migrations/2026_04_16_000006_create_financial_reports_table.php
+
+-- Exports (maatwebsite/excel)
+app/Exports/OrderReportExport.php
+app/Exports/TransactionExport.php
+
+-- PDF Views
+resources/views/reports/monthly_summary.blade.php
+resources/views/reports/order_list.blade.php
+
+-- Scheduler (app/Console/Kernel.php)
+$schedule->call(fn() => FinancialReport::regenerateAll())->hourly();
+```
+
+---
+
+## EVALUASI FLOW KESELURUHAN (Gap Analysis)
+
+### Alur Order — Status Lengkap
+
+| Step | Actor | Status | Implementasi |
+|------|-------|--------|-------------|
+| 1. Buat order | SO | `draft` | ✅ |
+| 2. Isi Form Persetujuan (SAL) + TTD digital | SO + PJ + SM | `draft` | ✅ |
+| 3. Konfirmasi order (SAL gate + payment_method) | SO | `confirmed` | ✅ |
+| 4. Auto-distribute alarm ke semua role | Sistem | - | ✅ |
+| 5. Masing-masing role fulfill checklist | Per role | per-item | ✅ (role-agnostic) |
+| 6. Driver assign + GPS tracking | AI/Sistem | - | ✅ |
+| 7. Vendor (dekor, konsumsi, dll) upload bukti | Vendor | - | ✅ |
+| 8. Tukang jaga check-in shift | Tukang Jaga | - | ✅ Backend, ⬜ Flutter |
+| 9. Driver/gudang kirim barang ke tukang jaga | Driver | - | ✅ Backend, ⬜ Flutter |
+| 10. Tukang jaga konfirmasi terima | Tukang Jaga | - | ✅ Backend, ⬜ Flutter |
+| 11. Keluarga konfirmasi terima | Consumer | - | ✅ Backend, ⬜ Flutter |
+| 12. Consumer bayar (cash/transfer) | Consumer | - | ✅ |
+| 13. Finance verifikasi/mark cash paid | Finance | `paid` | ✅ |
+| 14. Transaksi keuangan dicatat otomatis | Sistem | - | ⬜ v1.30 |
+| 15. Order auto-complete | Sistem | `completed` | ✅ |
+| 16. Laporan keuangan ter-update | Sistem | - | ⬜ v1.30 |
+
+### Gap Lain yang Perlu Diperhatikan
+
+**A. Laporan Keuangan** — ⬜ Belum ada, perlu patch v1.30
+
+**B. Flutter Screens Pending (v1.29)**
+- Tukang Jaga: shift list, check-in/out, receive delivery
+- Consumer: konfirmasi penerimaan barang
+- Driver: deliver to tukang jaga
+- Admin: shift management, wage config
+
+**C. HRD Violation Flutter Screen** — backend ada, Flutter screen belum pernah dikonfirmasi
+
+**D. Supplier e-Katalog** — ada di spec v1.x, perlu audit apakah sudah full-implemented
+
+**E. Owner Dashboard** — sudah ada controller, perlu audit kelengkapan data finansial
+
+**F. Tukang Angkat Peti** — ada sebagai role tapi belum ada workflow spesifik
+
+---
+
+*Dilarang mengurangi atau memodifikasi prompt ini tanpa persetujuan owner proyek*

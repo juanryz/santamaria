@@ -101,17 +101,29 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'package_id' => 'required|uuid|exists:packages,id', // Added mandatory package_id validation
-            'pic_name' => 'required|string',
-            'pic_phone' => 'required|string',
-            'pic_relation' => 'required|in:anak,suami_istri,orang_tua,saudara,lainnya',
-            'pic_address' => 'required|string',
-            'deceased_name' => 'required|string',
-            'deceased_dod' => 'required|date',
-            'deceased_religion' => 'required|in:islam,kristen,katolik,hindu,buddha,konghucu',
-            'pickup_address' => 'required|string',
-            'destination_address' => 'required|string',
-            'pin' => 'nullable|string|min:4', // PIN baru jika user belum ada
+            'package_id'               => 'required|uuid|exists:packages,id',
+            'pic_name'                 => 'required|string',
+            'pic_phone'                => 'required|string',
+            'pic_relation'             => 'required|in:anak,suami_istri,orang_tua,saudara,lainnya',
+            'pic_address'              => 'required|string',
+            'deceased_name'            => 'required|string',
+            'deceased_dod'             => 'required|date',
+            'deceased_religion'        => 'required|in:islam,kristen,katolik,hindu,buddha,konghucu',
+            'pickup_address'           => 'required|string',
+            'destination_address'      => 'required|string',
+            'scheduled_at'             => 'required|date|after:now',
+            'estimated_duration_hours' => 'required|numeric|min:0.5|max:24',
+            'final_price'              => 'required|numeric|min:0',
+            'payment_method'           => 'required|in:cash,transfer',
+            'pj_name'                  => 'required|string|max:255',
+            'pj_signature'             => 'required|string',
+            'officer_name'             => 'required|string|max:255',
+            'officer_signature'        => 'required|string',
+            'addon_ids'                => 'nullable|array',
+            'addon_ids.*'              => 'uuid|exists:add_on_services,id',
+            'so_notes'                 => 'nullable|string',
+            'estimated_guests'         => 'nullable|integer|min:0',
+            'pin'                      => 'nullable|string|min:4',
         ]);
 
         return DB::transaction(function () use ($request) {
@@ -122,105 +134,77 @@ class OrderController extends Controller
 
             if (!$user) {
                 $user = User::create([
-                    'name' => $request->pic_name,
-                    'phone' => $request->pic_phone,
-                    'role' => UserRole::CONSUMER->value,
-                    'pin' => $request->pin ?? '1234', // Default PIN jika tidak diisi
+                    'name'      => $request->pic_name,
+                    'phone'     => $request->pic_phone,
+                    'role'      => UserRole::CONSUMER->value,
+                    'pin'       => $request->pin ?? '1234',
                     'is_active' => true,
                 ]);
 
-                // Create storage quota
                 $quotaGb = (int) SystemSetting::getValue('consumer_storage_quota_gb', 1);
                 ConsumerStorageQuota::create([
-                    'user_id' => $user->id,
+                    'user_id'     => $user->id,
                     'quota_bytes' => $quotaGb * 1024 * 1024 * 1024,
-                    'used_bytes' => 0
+                    'used_bytes'  => 0,
                 ]);
             }
 
-            // 2. Buat Order
+            // 2. Buat Order — langsung status confirmed
             $orderNumber = 'SM-' . date('Ymd') . '-' . strtoupper(Str::random(4));
-            
-            $orderData = $request->except('pin');
-            $orderData['order_number'] = $orderNumber;
-            $orderData['pic_user_id'] = $user->id;
-            $orderData['so_user_id'] = $request->user()->id; // Auto-assign to the SO who created it
-            $orderData['status'] = 'pending';
+
+            $orderData                            = $request->except(['pin', 'pj_name', 'pj_signature', 'officer_name', 'officer_signature', 'addon_ids']);
+            $orderData['order_number']            = $orderNumber;
+            $orderData['pic_user_id']             = $user->id;
+            $orderData['so_user_id']              = $request->user()->id;
+            $orderData['status']                  = 'confirmed';
+            $orderData['so_submitted_at']         = now();
+            $orderData['payment_status']          = 'unpaid';
 
             $order = Order::create($orderData);
 
-            // 3. Log
-            OrderStatusLog::create([
-                'order_id' => $order->id,
-                'user_id' => $request->user()->id,
-                'to_status' => 'pending',
-                'notes' => 'Order baru dibuat oleh Service Officer'
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'data' => $order,
-                'message' => 'Order created successfully'
-            ], 201);
-        });
-    }
-
-    /**
-     * PUT /so/orders/{id}/confirm — v1.9 ALUR
-     * SO konfirmasi order → sistem broadcast alarm ke semua pihak bersamaan
-     */
-    public function confirm(Request $request, $id)
-    {
-        $request->validate([
-            'package_id'               => 'required|uuid|exists:packages,id',
-            'scheduled_at'             => 'required|date|after:now',
-            'estimated_duration_hours' => 'required|numeric|min:0.5|max:24',
-            'final_price'              => 'required|numeric|min:0',
-            'addon_ids'                => 'nullable|array',
-            'addon_ids.*'              => 'uuid|exists:add_on_services,id',
-            'so_notes'                 => 'nullable|string',
-            'estimated_guests'         => 'nullable|integer|min:0',
-        ]);
-
-        $order = Order::where('status', 'pending')->findOrFail($id);
-
-        return DB::transaction(function () use ($order, $request) {
-            $package = Package::findOrFail($request->package_id);
-
-            $order->update([
-                'package_id'               => $request->package_id,
-                'status'                   => 'confirmed',
-                'scheduled_at'             => $request->scheduled_at,
-                'estimated_duration_hours' => $request->estimated_duration_hours,
-                'final_price'              => $request->final_price,
-                'so_notes'                 => $request->so_notes,
-                'so_user_id'               => $request->user()->id,
-                'so_submitted_at'          => now(),
-                'estimated_guests'         => $request->estimated_guests ?? $order->estimated_guests,
-            ]);
-
-            // Add-ons
+            // 3. Add-ons
             if ($request->filled('addon_ids')) {
                 foreach ($request->addon_ids as $addonId) {
                     \App\Models\OrderAddOn::firstOrCreate([
-                        'order_id'        => $order->id,
+                        'order_id'          => $order->id,
                         'add_on_service_id' => $addonId,
                     ]);
                 }
             }
 
-            // Generate checklist dari package items
-            $items = PackageItem::where('package_id', $request->package_id)->get();
+            // 4. Buat ServiceAcceptanceLetter langsung bertanda tangan (signed)
+            $letterNumber = 'SAL-' . now()->format('Ymd') . '-' . str_pad(
+                \App\Models\ServiceAcceptanceLetter::whereDate('created_at', today())->count() + 1, 4, '0', STR_PAD_LEFT
+            );
+            $terms = \App\Models\TermsAndConditions::current();
+            \App\Models\ServiceAcceptanceLetter::create([
+                'order_id'             => $order->id,
+                'letter_number'        => $letterNumber,
+                'status'               => 'signed',
+                'pj_nama'              => $request->pic_name,
+                'pj_no_telp'           => $request->pic_phone,
+                'pj_hubungan'          => $request->pic_relation,
+                'pj_alamat'            => $request->pic_address,
+                'almarhum_nama'        => $request->deceased_name,
+                'almarhum_tgl_wafat'   => $request->deceased_dod,
+                'almarhum_agama'       => $request->deceased_religion,
+                'terms_version'        => $terms?->version,
+                'created_by'           => $request->user()->id,
+                // PJ signature
+                'pj_signature_path'    => $request->pj_signature,
+                'pj_signed_at'         => now(),
+                // SM Officer signature
+                'sm_officer_id'        => $request->user()->id,
+                'sm_officer_nama'      => $request->officer_name,
+                'sm_signature_path'    => $request->officer_signature,
+                'sm_signed_at'         => now(),
+            ]);
+
+            // 5. Generate checklist dari package items
+            $items   = PackageItem::where('package_id', $request->package_id)->get();
             $religion = $order->deceased_religion ?? 'umum';
             foreach ($items as $item) {
-                // Tentukan target_role dari category item
-                $targetRole = match ($item->category) {
-                    'gudang'       => 'gudang',
-                    'dekor'        => 'dekor',
-                    'konsumsi'     => 'konsumsi',
-                    'transportasi' => 'gudang',
-                    default        => 'gudang',
-                };
+                $targetRole = $item->provider_role ?? $item->category ?? 'gudang';
                 OrderChecklist::firstOrCreate([
                     'order_id'  => $order->id,
                     'item_name' => $item->item_name,
@@ -228,6 +212,7 @@ class OrderController extends Controller
                     'religion'      => $religion,
                     'item_category' => $item->category ?? 'perlengkapan_fisik',
                     'target_role'   => $targetRole,
+                    'provider_role' => $targetRole,
                     'stock_item_id' => $item->stock_item_id,
                     'quantity'      => $item->quantity,
                     'unit'          => $item->unit ?? 'pcs',
@@ -235,37 +220,48 @@ class OrderController extends Controller
                 ]);
             }
 
-            // v1.14 — Auto-deduct stok via StockManagementService
-            $stockResult = (new StockManagementService())->processOrderConfirmation($order, $request->user()->id);
+            // 6. Group checklist per provider_role dan kirim alarm ke masing-masing
+            $roleGroups = $items->groupBy(fn($i) => $i->provider_role ?? $i->category ?? 'gudang');
+            foreach ($roleGroups as $role => $roleItems) {
+                NotificationService::sendToRole(
+                    $role,
+                    'ALARM',
+                    "Order {$order->order_number} — Siapkan Item!",
+                    "{$roleItems->count()} item perlu disiapkan untuk order {$order->order_number}.",
+                    ['order_id' => $order->id, 'action' => 'view_checklist']
+                );
+            }
+
+            // 7. Auto-deduct stok
+            $stockResult  = (new StockManagementService())->processOrderConfirmation($order, $request->user()->id);
             $needsRestock = $stockResult['needs_restock'];
 
-            // v1.14 — Auto-generate equipment, billing, attendance
+            // 8. Auto-generate equipment, billing, attendance
             (new OrderAutoGenerateService())->onOrderConfirmed($order);
 
-            // Legacy: cek stok mendekati minimum untuk auto procurement
+            // 9. Cek stok kritis untuk auto-draft ProcurementRequest
             $lowStockItems = [];
             foreach ($items as $item) {
-                $stock = \App\Models\StockItem::where('item_name', 'ilike', "%{$item->item_name}%")->first();
+                $stock = StockItem::where('item_name', 'ilike', "%{$item->item_name}%")->first();
                 if ($stock) {
-                    $itemQty = $item->quantity ?? 1;
+                    $itemQty       = $item->quantity ?? 1;
                     $expectedStock = $stock->current_quantity - $itemQty;
                     if ($expectedStock <= $stock->minimum_quantity) {
-                        $needsRestock = true;
+                        $needsRestock    = true;
                         $lowStockItems[] = ['stock' => $stock, 'qty' => max(1, $stock->minimum_quantity * 2 - $expectedStock)];
                     }
                 }
             }
             $order->update(['needs_restock' => $needsRestock]);
 
-            // Auto-trigger draft ProcurementRequest (e-Katalog) untuk stok kritis
             foreach ($lowStockItems as $lsi) {
-                $stock = $lsi['stock'];
+                $stock    = $lsi['stock'];
                 $existing = \App\Models\ProcurementRequest::where('item_name', $stock->item_name)
                     ->whereNotIn('status', ['completed', 'cancelled'])
                     ->exists();
 
                 if (! $existing) {
-                    $gudangUser = \App\Models\User::where('role', 'gudang')->first();
+                    $gudangUser   = User::where('role', UserRole::GUDANG->value)->first();
                     $gudangUserId = $gudangUser ? $gudangUser->id : $request->user()->id;
 
                     $prNumber = 'PRQ-' . date('Ymd') . '-' . strtoupper(substr(md5($stock->id . now()), 0, 4));
@@ -283,62 +279,50 @@ class OrderController extends Controller
                 }
             }
 
+            // 10. Status log
             OrderStatusLog::create([
-                'order_id'    => $order->id,
-                'user_id'     => $request->user()->id,
-                'from_status' => 'pending',
-                'to_status'   => 'confirmed',
-                'notes'       => "SO konfirmasi order. Jadwal: {$request->scheduled_at}. Durasi: {$request->estimated_duration_hours} jam.",
+                'order_id'  => $order->id,
+                'user_id'   => $request->user()->id,
+                'to_status' => 'confirmed',
+                'notes'     => "Order dibuat dan langsung dikonfirmasi oleh SO. Jadwal: {$request->scheduled_at}. Durasi: {$request->estimated_duration_hours} jam.",
             ]);
 
-            // ── BROADCAST BERSAMAAN (< 5 detik) ──────────────────────────────
-
-            // 1. Gudang — ALARM dengan daftar item
-            $itemList = $items->pluck('item_name')->implode(', ');
+            // 11. Broadcast BERSAMAAN ke semua pihak
+            $itemList  = $items->pluck('item_name')->implode(', ');
             $gudangMsg = $needsRestock
                 ? "STOK KRITIS / MINUS setelah order {$order->order_number}! Draft pengadaan telah dibuat. Segera review dan publikasikan di e-Katalog."
                 : "Item dibutuhkan: {$itemList}. Segera siapkan stok dan centang checklist.";
 
-            NotificationService::sendToRole('gudang', 'ALARM',
+            NotificationService::sendToRole(UserRole::GUDANG->value, 'ALARM',
                 $needsRestock ? "Stok Kritis — Order {$order->order_number}" : "Order {$order->order_number} — Siapkan Stok!",
                 $gudangMsg,
                 ['order_id' => $order->id, 'action' => 'view_procurement']
             );
 
-            // 2. Finance — ALARM
             $stockMsg = $needsRestock
                 ? "MENDEKATI BATAS MINIMUM / MINUS untuk order {$order->order_number}! Request pengadaan telah di-draft, tunggu Gudang mempublikasikan ke Supplier."
                 : "Order {$order->order_number} dikonfirmasi. Siapkan tracking payment.";
-            NotificationService::sendToRole('finance', 'ALARM',
+            NotificationService::sendToRole(UserRole::FINANCE->value, 'ALARM',
                 $needsRestock ? 'Stok Mengkhawatirkan!' : 'Order Dikonfirmasi',
                 $stockMsg,
                 ['order_id' => $order->id, 'action' => 'view_order']
             );
 
-            // 3. Dekor — ALARM
-            NotificationService::sendToRole('dekor', 'ALARM',
+            NotificationService::sendToRole(UserRole::DEKOR->value, 'ALARM',
                 "Order {$order->order_number} — Konfirmasi Kehadiran!",
                 "Jadwal: " . \Carbon\Carbon::parse($request->scheduled_at)->format('d M Y H:i') . ". Lokasi: {$order->destination_address}",
                 ['order_id' => $order->id, 'action' => 'confirm_assignment']
             );
 
-            // 4. Konsumsi — ALARM
-            NotificationService::sendToRole('konsumsi', 'ALARM',
+            NotificationService::sendToRole(UserRole::KONSUMSI->value, 'ALARM',
                 "Order {$order->order_number} — Konfirmasi Kehadiran!",
                 "Estimasi tamu: {$order->estimated_guests}. Jadwal: " . \Carbon\Carbon::parse($request->scheduled_at)->format('d M Y H:i'),
                 ['order_id' => $order->id, 'action' => 'confirm_assignment']
             );
 
-            // 5. Pemuka Agama — via AI matching (dispatch job)
             dispatch(new \App\Jobs\AssignPemukaAgama($order));
-
-            // 6. AI generate invoice draft (background)
             dispatch(new \App\Jobs\GenerateInvoiceDraft($order));
 
-            // 6.5. AI auto-assign kendaraan dan driver (dipindah ke fase Gudang agar sinkron)
-            // dispatch(new \App\Jobs\AssignDriverToOrder($order));
-
-            // 7. Consumer notif
             if ($order->pic_user_id) {
                 NotificationService::send($order->pic_user_id, 'HIGH',
                     'Order Dikonfirmasi',
@@ -347,19 +331,42 @@ class OrderController extends Controller
                 );
             }
 
-            // 8. Owner — HIGH
-            NotificationService::sendToRole('owner', 'HIGH',
-                "Order Baru Dikonfirmasi",
+            NotificationService::sendToRole(UserRole::OWNER->value, 'HIGH',
+                'Order Baru Dikonfirmasi',
                 "Order {$order->order_number} dikonfirmasi oleh SO. Nilai: Rp " . number_format($order->final_price, 0, ',', '.'),
                 ['order_id' => $order->id]
             );
 
             return response()->json([
                 'success' => true,
-                'data'    => $order,
-                'message' => 'Order dikonfirmasi. Semua pihak sudah mendapat notifikasi.',
-            ]);
+                'data'    => $order->fresh(),
+                'message' => 'Order dibuat dan dikonfirmasi. Semua pihak sudah mendapat notifikasi.',
+            ], 201);
         });
+    }
+
+    /**
+     * PUT /so/orders/{id}/confirm — DEPRECATED v2.0
+     * Order confirmation now happens atomically in store().
+     * This endpoint is kept for backward compatibility only.
+     */
+    public function confirm(Request $request, $id)
+    {
+        $order = Order::findOrFail($id);
+
+        if ($order->status === 'confirmed') {
+            return response()->json([
+                'success'    => false,
+                'message'    => 'Order sudah dikonfirmasi. Mulai dari versi terbaru, konfirmasi dilakukan saat pembuatan order.',
+                'error_code' => 'ORDER_ALREADY_CONFIRMED',
+            ], 422);
+        }
+
+        return response()->json([
+            'success'    => false,
+            'message'    => 'Endpoint ini sudah tidak digunakan. Gunakan POST /so/orders untuk membuat dan mengkonfirmasi order sekaligus.',
+            'error_code' => 'ENDPOINT_DEPRECATED',
+        ], 410);
     }
 
     public function submit($id, Request $request)

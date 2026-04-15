@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Models\AddOnService;
 use App\Models\Order;
 use App\Models\OrderAddOn;
@@ -29,11 +30,11 @@ class OrderAddOnController extends Controller
         $order = Order::findOrFail($orderId);
         
         $user = $request->user();
-        if ($user->role === 'consumer') {
+        if ($user->role === UserRole::CONSUMER->value) {
             if ($order->pic_user_id !== $user->id) {
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
-        } elseif ($user->role === 'service_officer') {
+        } elseif ($user->role === UserRole::SERVICE_OFFICER->value) {
             // SO can add to any order or just theirs, depending on business rules.
             // Assuming SO can touch any order that is pending or in review.
         } else {

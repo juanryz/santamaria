@@ -22,6 +22,7 @@ class OrderChecklist extends Model
         'religion',
         'item_category',
         'target_role',
+        'provider_role',
     ];
 
     protected $casts = [

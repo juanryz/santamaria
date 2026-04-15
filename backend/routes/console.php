@@ -37,3 +37,6 @@ Schedule::command('coffin:check-qc-deadline')->everyTwoHours();
 Schedule::command('death-cert:check-pending')->dailyAt('09:00')->timezone('Asia/Jakarta');
 Schedule::command('kpi:calculate-monthly')->monthlyOn(1, '02:00')->timezone('Asia/Jakarta');
 Schedule::command('kpi:refresh-current-period')->everySixHours();
+
+// v1.15 — Financial report regeneration
+Schedule::call(fn() => \App\Models\FinancialReport::regenerateAll())->hourly();

@@ -47,16 +47,16 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        $allowedRoles = array_filter(UserRole::values(), fn($r) => !in_array($r, [
-            UserRole::CONSUMER->value,
-            UserRole::SUPER_ADMIN->value,
-        ]));
+        $allowedSlugs = \App\Models\Role::where('is_active', true)
+            ->whereNotIn('slug', ['consumer', 'super_admin'])
+            ->pluck('slug')
+            ->toArray();
 
         $request->validate([
             'name'     => 'required|string|max:255',
             'phone'    => 'required|string|max:20|unique:users',
             'email'    => 'required|email|unique:users',
-            'role'     => ['required', Rule::in($allowedRoles)],
+            'role'     => ['required', Rule::in($allowedSlugs)],
             'password' => 'required|string|min:8',
             'religion' => 'nullable|string|max:50',
         ]);
@@ -68,7 +68,7 @@ class UserController extends Controller
             'role'                 => $request->role,
             'password'             => $request->password,
             'is_active'            => true,
-            'is_viewer'            => $request->role === UserRole::VIEWER->value,
+            'is_viewer'            => (\App\Models\Role::findBySlug($request->role)?->is_viewer_only ?? ($request->role === UserRole::VIEWER->value)),
             'is_verified_supplier' => $request->role === UserRole::SUPPLIER->value,
             'religion'             => $request->religion,
             'created_by'           => $request->user()->id,
@@ -97,25 +97,26 @@ class UserController extends Controller
     {
         $user = User::where('role', '!=', UserRole::SUPER_ADMIN->value)->findOrFail($id);
 
-        $allowedRoles = array_filter(UserRole::values(), fn($r) => !in_array($r, [
-            UserRole::CONSUMER->value,
-            UserRole::SUPER_ADMIN->value,
-        ]));
+        $allowedSlugs = \App\Models\Role::where('is_active', true)
+            ->whereNotIn('slug', ['consumer', 'super_admin'])
+            ->pluck('slug')
+            ->toArray();
 
         $request->validate([
             'name'      => 'sometimes|string|max:255',
             'phone'     => ['sometimes', 'string', 'max:20', Rule::unique('users')->ignore($user->id)],
             'email'     => ['sometimes', 'email', Rule::unique('users')->ignore($user->id)],
-            'role'      => ['sometimes', Rule::in($allowedRoles)],
+            'role'      => ['sometimes', Rule::in($allowedSlugs)],
             'is_active' => 'sometimes|boolean',
             'religion'  => 'nullable|string|max:50',
         ]);
 
         $data = $request->only(['name', 'phone', 'email', 'role', 'is_active', 'religion']);
 
-        // Jika role berubah ke viewer, set is_viewer = true; sebaliknya false
+        // Jika role berubah, sync is_viewer dari flag is_viewer_only di roles table
         if (isset($data['role'])) {
-            $data['is_viewer'] = $data['role'] === UserRole::VIEWER->value;
+            $roleModel = \App\Models\Role::findBySlug($data['role']);
+            $data['is_viewer'] = $roleModel?->is_viewer_only ?? ($data['role'] === UserRole::VIEWER->value);
         }
 
         $user->update($data);

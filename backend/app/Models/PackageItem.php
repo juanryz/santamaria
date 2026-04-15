@@ -20,6 +20,8 @@ class PackageItem extends Model
         'quantity',
         'unit',
         'category',
+        'provider_role',
+        'fulfillment_notes',
     ];
 
     protected static function boot()

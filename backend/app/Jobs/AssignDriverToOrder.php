@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\UserRole;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -23,7 +24,7 @@ class AssignDriverToOrder implements ShouldQueue
     public function handle(): void
     {
         // 1. Temukan Driver
-        $driver = User::where('role', 'driver')
+        $driver = User::where('role', UserRole::DRIVER->value)
             ->whereDoesntHave('assignedOrders', function ($q) {
                 $q->whereIn('status', ['confirmed', 'in_progress', 'approved']);
             })
@@ -86,7 +87,7 @@ class AssignDriverToOrder implements ShouldQueue
 
         // Kondisi Kekosongan Armada
         if (!$vehicle) {
-            NotificationService::sendToRole('finance', 'ALARM',
+            NotificationService::sendToRole(UserRole::FINANCE->value, 'ALARM',
                 'Armada Habis - Pengajuan Eksternal',
                 "Seluruh armada paket habis! Order {$this->order->order_number} memerlukan supplier/eksternal. Segera setujui pengadaan mobil luar.",
                 ['order_id' => $this->order->id]
@@ -94,7 +95,7 @@ class AssignDriverToOrder implements ShouldQueue
         }
 
         if (!$driver) {
-            NotificationService::sendToRole('admin', 'ALARM',
+            NotificationService::sendToRole(UserRole::ADMIN->value, 'ALARM',
                 'Kekurangan Driver',
                 "Order {$this->order->order_number} tidak dapat di-assign driver otomatis.",
                 ['order_id' => $this->order->id]

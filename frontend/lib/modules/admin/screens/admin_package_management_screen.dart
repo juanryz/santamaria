@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/constants/role_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
@@ -113,7 +114,7 @@ class _AdminPackageManagementScreenState
     final isActive = pkg['is_active'] as bool? ?? true;
     final items = List<dynamic>.from(pkg['items'] ?? []);
     final gudangItems =
-        items.where((it) => it['category'] == 'gudang').toList();
+        items.where((it) => it['category'] == RoleConstants.gudang).toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -483,6 +484,7 @@ class _PackageItemsScreenState extends State<_PackageItemsScreen> {
   final _api = ApiClient();
   List<dynamic> _items = [];
   List<dynamic> _stockItems = [];
+  List<String> _providerRoles = ['gudang', 'laviore', 'konsumsi', 'purchasing'];
   bool _isLoading = true;
 
   static const _roleColor = AppColors.roleAdmin;
@@ -499,6 +501,7 @@ class _PackageItemsScreenState extends State<_PackageItemsScreen> {
       final results = await Future.wait([
         _api.dio.get('/admin/packages/${widget.package['id']}'),
         _api.dio.get('/admin/stock-items'),
+        _api.dio.get('/admin/provider-roles'),
       ]);
       if (!mounted) return;
       if (results[0].data['success'] == true) {
@@ -508,6 +511,10 @@ class _PackageItemsScreenState extends State<_PackageItemsScreen> {
       if (results[1].data['success'] == true) {
         setState(() =>
             _stockItems = List<dynamic>.from(results[1].data['data'] ?? []));
+      }
+      if (results[2].data['success'] == true) {
+        setState(() => _providerRoles =
+            List<String>.from(results[2].data['data'] ?? _providerRoles));
       }
     } catch (_) {
       if (mounted) {
@@ -550,10 +557,38 @@ class _PackageItemsScreenState extends State<_PackageItemsScreen> {
     }
   }
 
-  void _showAddItemSheet() {
-    String? selectedStockId;
-    final qtyCtrl = TextEditingController(text: '1');
-    String category = 'gudang';
+  /// Returns stock items filtered by owner_role == providerRole.
+  List<dynamic> _stockForRole(String providerRole) =>
+      _stockItems.where((s) => s['owner_role'] == providerRole).toList();
+
+  void _showAddItemSheet({Map<String, dynamic>? existingItem}) {
+    final isEdit = existingItem != null;
+
+    // Infer initial provider_role from existing item
+    String inferRole(Map<String, dynamic> item) {
+      if ((item['provider_role'] as String?)?.isNotEmpty == true) {
+        return item['provider_role'] as String;
+      }
+      final cat = item['category'] as String? ?? '';
+      return switch (cat) {
+        'dekor' => 'laviore',
+        'konsumsi' => 'konsumsi',
+        'dokumen' => 'purchasing',
+        _ => 'gudang',
+      };
+    }
+
+    String providerRole =
+        isEdit ? inferRole(existingItem) : _providerRoles.first;
+    String? selectedStockId = isEdit ? existingItem['stock_item_id'] as String? : null;
+    final itemNameCtrl = TextEditingController(
+        text: isEdit ? existingItem['item_name'] as String? ?? '' : '');
+    final unitCtrl = TextEditingController(
+        text: isEdit ? existingItem['unit'] as String? ?? '' : '');
+    final qtyCtrl = TextEditingController(
+        text: isEdit ? existingItem['quantity']?.toString() ?? '1' : '1');
+    final notesCtrl = TextEditingController(
+        text: isEdit ? existingItem['fulfillment_notes'] as String? ?? '' : '');
     bool isSaving = false;
 
     showModalBottomSheet(
@@ -563,166 +598,257 @@ class _PackageItemsScreenState extends State<_PackageItemsScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModal) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: AppColors.glassBorder,
-                      borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('Tambah Item ke Paket',
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: selectedStockId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Pilih Item Stok *',
-                  prefixIcon: Icon(Icons.inventory_outlined,
-                      color: AppColors.textHint, size: 20),
-                  helperText:
-                      'Item yang dipilih akan otomatis mengurangi stok gudang',
-                ),
-                items: _stockItems.map<DropdownMenuItem<String>>((s) {
-                  final curr = s['current_quantity'] ?? 0;
-                  final min = s['minimum_quantity'] ?? 0;
-                  final isLow = curr <= min;
-                  return DropdownMenuItem<String>(
-                    value: s['id'] as String,
-                    child: Row(
-                      children: [
-                        if (isLow)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 6),
-                            child: Icon(Icons.warning_rounded,
-                                color: AppColors.statusDanger, size: 14),
+        builder: (ctx, setModal) {
+          final roleStockItems = _stockForRole(providerRole);
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: AppColors.glassBorder,
+                          borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isEdit ? 'Edit Item Paket' : 'Tambah Item ke Paket',
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Provider Role dropdown
+                  DropdownButtonFormField<String>(
+                    initialValue: _providerRoles.contains(providerRole)
+                        ? providerRole
+                        : _providerRoles.first,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Provider Role *',
+                      prefixIcon: Icon(Icons.group_outlined,
+                          color: AppColors.textHint, size: 20),
+                      helperText: 'Tim yang bertanggung jawab menyiapkan item ini',
+                    ),
+                    items: _providerRoles
+                        .map((r) => DropdownMenuItem(
+                              value: r,
+                              child: Text(r,
+                                  style: const TextStyle(fontSize: 14)),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setModal(() {
+                      providerRole = v!;
+                      selectedStockId = null; // reset stock picker on role change
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Stock picker filtered by role
+                  DropdownButtonFormField<String>(
+                    initialValue: roleStockItems.any((s) => s['id'] == selectedStockId)
+                        ? selectedStockId
+                        : null,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Item Stok (opsional)',
+                      prefixIcon: const Icon(Icons.inventory_outlined,
+                          color: AppColors.textHint, size: 20),
+                      helperText: roleStockItems.isEmpty
+                          ? 'Belum ada stok untuk role ini — isi nama manual'
+                          : 'Jika dipilih, nama & satuan otomatis terisi',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                          value: null, child: Text('— Tidak terhubung ke stok —')),
+                      ...roleStockItems.map<DropdownMenuItem<String>>((s) {
+                        final curr = s['current_quantity'] ?? 0;
+                        final min = s['minimum_quantity'] ?? 0;
+                        final isLow = curr <= min;
+                        return DropdownMenuItem<String>(
+                          value: s['id'] as String,
+                          child: Row(
+                            children: [
+                              if (isLow)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 6),
+                                  child: Icon(Icons.warning_rounded,
+                                      color: AppColors.statusDanger, size: 14),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  '${s['item_name']}  (${s['unit']})',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: isLow
+                                          ? AppColors.statusDanger
+                                          : AppColors.textPrimary),
+                                ),
+                              ),
+                              Text('$curr',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: isLow
+                                          ? AppColors.statusDanger
+                                          : AppColors.textHint)),
+                            ],
                           ),
-                        Expanded(
-                          child: Text(
-                            '${s['item_name']}  (${s['unit']})',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: isLow
-                                    ? AppColors.statusDanger
-                                    : AppColors.textPrimary),
+                        );
+                      }),
+                    ],
+                    onChanged: (v) {
+                      setModal(() => selectedStockId = v);
+                      if (v != null) {
+                        final stock = roleStockItems.firstWhere(
+                            (s) => s['id'] == v,
+                            orElse: () => {});
+                        if (stock.isNotEmpty) {
+                          itemNameCtrl.text = stock['item_name'] ?? '';
+                          unitCtrl.text = stock['unit'] ?? '';
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Item name (manual if no stock selected)
+                  TextField(
+                    controller: itemNameCtrl,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    decoration: const InputDecoration(
+                      labelText: 'Nama Item *',
+                      prefixIcon: Icon(Icons.label_outline,
+                          color: AppColors.textHint, size: 20),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: qtyCtrl,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Jumlah *',
+                            prefixIcon: Icon(Icons.numbers,
+                                color: AppColors.textHint, size: 20),
                           ),
                         ),
-                        Text('Stok: $curr',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: isLow
-                                    ? AppColors.statusDanger
-                                    : AppColors.textHint)),
-                      ],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: unitCtrl,
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: const InputDecoration(
+                            labelText: 'Satuan *',
+                            prefixIcon: Icon(Icons.straighten_outlined,
+                                color: AppColors.textHint, size: 20),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextField(
+                    controller: notesCtrl,
+                    maxLines: 2,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    decoration: const InputDecoration(
+                      labelText: 'Catatan Pemenuhan (opsional)',
+                      prefixIcon: Icon(Icons.notes_outlined,
+                          color: AppColors.textHint, size: 20),
                     ),
-                  );
-                }).toList(),
-                onChanged: (v) => setModal(() => selectedStockId = v),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: qtyCtrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: 'Jumlah yang Dibutuhkan *',
-                  prefixIcon:
-                      Icon(Icons.numbers, color: AppColors.textHint, size: 20),
-                ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: category,
-                decoration: const InputDecoration(
-                  labelText: 'Kategori *',
-                  prefixIcon: Icon(Icons.category_outlined,
-                      color: AppColors.textHint, size: 20),
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'gudang', child: Text('Gudang')),
-                  DropdownMenuItem(value: 'dekor', child: Text('Dekorasi')),
-                  DropdownMenuItem(value: 'konsumsi', child: Text('Konsumsi')),
-                  DropdownMenuItem(
-                      value: 'transportasi', child: Text('Transportasi')),
-                  DropdownMenuItem(value: 'dokumen', child: Text('Dokumen')),
+                  ),
+                  const SizedBox(height: 20),
+
+                  ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            if (itemNameCtrl.text.trim().isEmpty ||
+                                unitCtrl.text.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Nama item dan satuan wajib diisi.')),
+                              );
+                              return;
+                            }
+                            setModal(() => isSaving = true);
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              final payload = {
+                                'stock_item_id': selectedStockId,
+                                'item_name': itemNameCtrl.text.trim(),
+                                'quantity': int.tryParse(qtyCtrl.text) ?? 1,
+                                'unit': unitCtrl.text.trim(),
+                                'provider_role': providerRole,
+                                if (notesCtrl.text.trim().isNotEmpty)
+                                  'fulfillment_notes': notesCtrl.text.trim(),
+                              };
+
+                              if (isEdit) {
+                                await _api.dio.put(
+                                  '/admin/packages/${widget.package['id']}/items/${existingItem['id']}',
+                                  data: payload,
+                                );
+                              } else {
+                                await _api.dio.post(
+                                  '/admin/packages/${widget.package['id']}/items',
+                                  data: payload,
+                                );
+                              }
+
+                              if (!mounted) return;
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                _load();
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                      content: Text(isEdit
+                                          ? 'Item diperbarui.'
+                                          : 'Item berhasil ditambahkan.')),
+                                );
+                              }
+                            } catch (e) {
+                              setModal(() => isSaving = false);
+                              messenger.showSnackBar(
+                                SnackBar(content: Text('Gagal: $e')),
+                              );
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _roleColor,
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : Text(isEdit ? 'Simpan Perubahan' : 'Tambah Item'),
+                  ),
                 ],
-                onChanged: (v) => setModal(() => category = v!),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: isSaving
-                    ? null
-                    : () async {
-                        if (selectedStockId == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content:
-                                    Text('Pilih item stok terlebih dahulu.')),
-                          );
-                          return;
-                        }
-                        setModal(() => isSaving = true);
-                        final messenger = ScaffoldMessenger.of(context);
-                        try {
-                          final stock = _stockItems.firstWhere(
-                            (s) => s['id'] == selectedStockId,
-                            orElse: () => {},
-                          );
-                          await _api.dio.post(
-                            '/admin/packages/${widget.package['id']}/items',
-                            data: {
-                              'stock_item_id': selectedStockId,
-                              'item_name': stock['item_name'] ?? '',
-                              'quantity': int.tryParse(qtyCtrl.text) ?? 1,
-                              'unit': stock['unit'] ?? 'pcs',
-                              'category': category,
-                            },
-                          );
-                          if (!mounted) return;
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx);
-                            _load();
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                  content: Text('Item berhasil ditambahkan.')),
-                            );
-                          }
-                        } catch (e) {
-                          setModal(() => isSaving = false);
-                          messenger.showSnackBar(
-                            SnackBar(content: Text('Gagal: $e')),
-                          );
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _roleColor,
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-                child: isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : const Text('Tambah Item'),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

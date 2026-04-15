@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Vendor;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\OrderBuktiLapangan;
 use App\Models\PemukaAgamaAssignment;
@@ -23,9 +24,9 @@ class BuktiController extends Controller
         $orderId  = $this->resolveOrderId($assignmentId, $request->user());
         $role     = $request->user()->role;
         $buktiType = match ($role) {
-            'dekor'    => 'dekorasi_selesai',
-            'konsumsi' => 'konsumsi_selesai',
-            default    => 'lainnya',
+            UserRole::DEKOR->value    => 'dekorasi_selesai',
+            UserRole::KONSUMSI->value => 'konsumsi_selesai',
+            default                   => 'lainnya',
         };
 
         $path = StorageService::upload(

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\UserRole;
 use App\Models\HrdViolation;
 use App\Models\Order;
 use App\Models\OrderBuktiLapangan;
@@ -33,7 +34,7 @@ class CheckLateBuktiUpload extends Command
 
                 // Cek bukti driver
                 $driverBukti = OrderBuktiLapangan::where('order_id', $order->id)
-                    ->where('role', 'driver')
+                    ->where('role', UserRole::DRIVER->value)
                     ->count();
 
                 if ($driverBukti === 0 && $order->driver_id) {
@@ -43,7 +44,7 @@ class CheckLateBuktiUpload extends Command
                 // Cek bukti dekor
                 if ($order->dekor_status === 'done') {
                     $dekorBukti = OrderBuktiLapangan::where('order_id', $order->id)
-                        ->where('role', 'dekor')
+                        ->where('role', UserRole::DEKOR->value)
                         ->count();
 
                     if ($dekorBukti === 0) {

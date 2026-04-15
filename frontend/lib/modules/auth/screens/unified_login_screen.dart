@@ -22,6 +22,7 @@ import '../../vendor/screens/supplier_dashboard_screen.dart';
 import '../../vendor_assignment/screens/vendor_assignment_screen.dart';
 import '../../dekor/screens/dekor_dashboard_screen.dart';
 import '../../../core/services/biometric_service.dart';
+import '../../../shared/screens/role_inventory_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class UnifiedLoginScreen extends StatefulWidget {
@@ -185,7 +186,7 @@ class _UnifiedLoginScreenState extends State<UnifiedLoginScreen> {
       case RoleConstants.konsumsi || RoleConstants.pemukaAgama:
         _navigateTo(const VendorAssignmentScreen());
       default:
-        _snack('Selamat datang.');
+        _navigateTo(const RoleInventoryScreen());
     }
   }
 

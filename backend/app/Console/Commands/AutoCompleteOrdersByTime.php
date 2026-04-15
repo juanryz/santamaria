@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\UserRole;
 use App\Models\Order;
 use App\Models\OrderStatusLog;
 use App\Services\NotificationService;
@@ -58,14 +59,14 @@ class AutoCompleteOrdersByTime extends Command
                         }
 
                         // Finance notif
-                        NotificationService::sendToRole('finance', 'ALARM',
+                        NotificationService::sendToRole(UserRole::FINANCE->value, 'ALARM',
                             "Cek Status Payment — {$order->order_number}",
                             "Order selesai. Tunggu bukti payment dari konsumen atau hubungi penanggung jawab.",
                             ['order_id' => $order->id]
                         );
 
                         // Owner notif
-                        NotificationService::sendToRole('owner', 'NORMAL',
+                        NotificationService::sendToRole(UserRole::OWNER->value, 'NORMAL',
                             "Order {$order->order_number} Selesai",
                             "Auto-completed. Estimasi durasi {$order->estimated_duration_hours} jam sudah terlewat.",
                             ['order_id' => $order->id]
@@ -87,7 +88,7 @@ class AutoCompleteOrdersByTime extends Command
                     ->addHours($order->estimated_duration_hours + 2);
 
                 if ($now->greaterThan($tolerance)) {
-                    NotificationService::sendToRole('owner', 'ALARM',
+                    NotificationService::sendToRole(UserRole::OWNER->value, 'ALARM',
                         "⚠ Order Melebihi Estimasi — {$order->order_number}",
                         "Driver belum tiba di tujuan. Sudah lewat " . ($order->estimated_duration_hours + 2) . " jam dari jadwal.",
                         ['order_id' => $order->id]

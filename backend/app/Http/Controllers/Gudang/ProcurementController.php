@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Gudang;
 
+use App\Enums\ProcurementStatus;
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\ProcurementRequest;
 use App\Models\SupplierQuote;
@@ -48,6 +50,7 @@ class ProcurementController extends Controller
         ]);
 
         $data['gudang_user_id']  = $request->user()->id;
+        $data['requested_by']    = $request->user()->id;
         $data['request_number']  = ProcurementRequest::generateRequestNumber();
         $data['status']          = 'draft';
 
@@ -81,7 +84,7 @@ class ProcurementController extends Controller
         ]);
 
         // Alarm ke semua supplier terverifikasi
-        $supplierIds = \App\Models\User::where('role', 'supplier')
+        $supplierIds = \App\Models\User::where('role', UserRole::SUPPLIER->value)
             ->where('is_verified_supplier', true)
             ->pluck('id');
 
@@ -104,7 +107,7 @@ class ProcurementController extends Controller
         $data = $request->validate(['reason' => 'nullable|string']);
 
         $pr = ProcurementRequest::where('gudang_user_id', $request->user()->id)
-            ->whereNotIn('status', ['finance_approved', 'goods_received', 'completed'])
+            ->whereNotIn('status', [ProcurementStatus::PURCHASING_APPROVED->value, ProcurementRequest::STATUS_GOODS_RECEIVED, ProcurementRequest::STATUS_COMPLETED])
             ->findOrFail($id);
 
         $pr->update([
@@ -158,7 +161,7 @@ class ProcurementController extends Controller
 
             // Alarm Finance
             NotificationService::sendToRole(
-                'finance',
+                UserRole::FINANCE->value,
                 'ALARM',
                 'Pengadaan Butuh Approval!',
                 "Barang: {$pr->item_name} | Supplier: {$quote->supplier->name} | Total: Rp " . number_format($quote->total_price, 0, ',', '.'),
@@ -194,7 +197,7 @@ class ProcurementController extends Controller
         ]);
 
         $pr = ProcurementRequest::where('gudang_user_id', $request->user()->id)
-            ->where('status', 'finance_approved')
+            ->where('status', ProcurementStatus::PURCHASING_APPROVED->value)
             ->with('supplierTransaction')
             ->findOrFail($id);
 
@@ -237,7 +240,7 @@ class ProcurementController extends Controller
 
             // Alarm Finance untuk bayar
             NotificationService::sendToRole(
-                'finance',
+                UserRole::FINANCE->value,
                 'ALARM',
                 'Barang Diterima — Proses Pembayaran!',
                 "Barang {$pr->item_name} sudah diterima. Segera proses pembayaran ke supplier.",

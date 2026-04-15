@@ -13,18 +13,20 @@ class ProcurementRequest extends Model
     use HasUuids;
 
     // Status Constants
-    const STATUS_DRAFT = 'draft';
-    const STATUS_OPEN = 'open';
-    const STATUS_EVALUATING = 'evaluating';
-    const STATUS_AWARDED = 'awarded';
-    const STATUS_FINANCE_APPROVED = 'finance_approved';
-    const STATUS_GOODS_RECEIVED = 'goods_received';
-    const STATUS_COMPLETED = 'completed';
-    const STATUS_CANCELLED = 'cancelled';
+    const STATUS_DRAFT            = 'draft';
+    const STATUS_OPEN             = 'open';
+    const STATUS_EVALUATING       = 'evaluating';
+    const STATUS_AWARDED          = 'awarded';
+    const STATUS_FINANCE_APPROVED = 'finance_approved';   // == ProcurementStatus::PURCHASING_APPROVED->value
+    const STATUS_GOODS_RECEIVED   = 'goods_received';
+    const STATUS_PARTIAL_RECEIVED = 'partial_received';
+    const STATUS_COMPLETED        = 'completed';
+    const STATUS_CANCELLED        = 'cancelled';
 
     protected $fillable = [
         'request_number',
         'gudang_user_id',
+        'requested_by',
         'order_id',
         'item_name',
         'specification',
@@ -59,6 +61,11 @@ class ProcurementRequest extends Model
     public function gudangUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'gudang_user_id');
+    }
+
+    public function requestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by');
     }
 
     public function order(): BelongsTo

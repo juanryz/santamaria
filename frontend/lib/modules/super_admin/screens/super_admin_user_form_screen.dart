@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/constants/role_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
@@ -30,28 +31,13 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
   bool _obscurePassword = true;
   String _selectedRole = 'service_officer';
 
+  // Dynamic roles loaded from API
+  List<Map<String, dynamic>> _availableRoles = [];
+  bool _rolesLoading = true;
+
   bool get _isEdit => widget.existingUser != null;
 
   static const _roleColor = AppColors.roleSuperAdmin;
-
-  static const _roleOptions = [
-    'service_officer', 'admin', 'gudang', 'finance', 'driver',
-    'dekor', 'konsumsi', 'supplier', 'owner', 'pemuka_agama', 'tukang_angkat_peti',
-  ];
-
-  static const _roleLabels = {
-    'service_officer': 'Service Officer',
-    'admin': 'Admin',
-    'gudang': 'Gudang',
-    'finance': 'Finance',
-    'driver': 'Driver',
-    'dekor': 'Dekor',
-    'konsumsi': 'Konsumsi',
-    'supplier': 'Supplier',
-    'owner': 'Owner',
-    'pemuka_agama': 'Pemuka Agama',
-    'tukang_angkat_peti': 'Koordinator Angkat Peti',
-  };
 
   @override
   void initState() {
@@ -63,6 +49,32 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
       _phoneController.text = u['phone'] ?? '';
       _religionController.text = u['religion'] ?? '';
       _selectedRole = u['role'] ?? 'service_officer';
+    }
+    _loadRoles();
+  }
+
+  Future<void> _loadRoles() async {
+    try {
+      final res = await widget.apiClient.dio.get('/super-admin/roles');
+      final all = (res.data['data'] as List).cast<Map<String, dynamic>>();
+      // Exclude consumer and super_admin (cannot assign these via user form)
+      final filtered = all.where((r) =>
+          r['slug'] != 'consumer' &&
+          r['slug'] != 'super_admin' &&
+          (r['is_active'] as bool? ?? true)).toList();
+      if (mounted) {
+        setState(() {
+          _availableRoles = filtered;
+          _rolesLoading = false;
+          // Ensure selected role is valid; keep current if it exists, else pick first
+          final slugs = filtered.map((r) => r['slug'] as String).toList();
+          if (!slugs.contains(_selectedRole) && slugs.isNotEmpty) {
+            _selectedRole = slugs.first;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _rolesLoading = false);
     }
   }
 
@@ -214,23 +226,31 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
                       fontSize: 12,
                       letterSpacing: 1)),
               const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedRole,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.badge_outlined,
-                      color: AppColors.textHint, size: 20),
-                  labelText: 'Role',
-                ),
-                items: _roleOptions
-                    .map((role) => DropdownMenuItem(
-                          value: role,
-                          child: Text(_roleLabels[role] ?? role),
-                        ))
-                    .toList(),
-                onChanged: (val) =>
-                    setState(() => _selectedRole = val!),
-              ),
-              if (_selectedRole == 'pemuka_agama') ...[
+              _rolesLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : DropdownButtonFormField<String>(
+                      initialValue: _availableRoles
+                              .any((r) => r['slug'] == _selectedRole)
+                          ? _selectedRole
+                          : (_availableRoles.isNotEmpty
+                              ? _availableRoles.first['slug'] as String
+                              : null),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.badge_outlined,
+                            color: AppColors.textHint, size: 20),
+                        labelText: 'Role',
+                      ),
+                      items: _availableRoles
+                          .map((r) => DropdownMenuItem<String>(
+                                value: r['slug'] as String,
+                                child: Text(r['label'] as String? ?? r['slug'] as String),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedRole = val);
+                      },
+                    ),
+              if (_selectedRole == RoleConstants.pemukaAgama) ...[
                 const SizedBox(height: 12),
                 _field(
                   controller: _religionController,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Driver;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderBuktiLapangan;
@@ -32,7 +33,7 @@ class BuktiController extends Controller
         $bukti = OrderBuktiLapangan::create([
             'order_id'        => $order->id,
             'uploaded_by'     => $request->user()->id,
-            'role'            => 'driver',
+            'role'            => UserRole::DRIVER->value,
             'bukti_type'      => $data['bukti_type'],
             'file_path'       => $path,
             'file_size_bytes' => $fileSize,
@@ -49,7 +50,7 @@ class BuktiController extends Controller
         Order::where('driver_id', $request->user()->id)->findOrFail($id);
 
         $bukti = OrderBuktiLapangan::where('order_id', $id)
-            ->where('role', 'driver')
+            ->where('role', UserRole::DRIVER->value)
             ->get()
             ->map(function ($b) {
                 $b->url = StorageService::getSignedUrl($b->file_path);

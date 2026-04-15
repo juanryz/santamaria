@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/constants/role_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
@@ -430,7 +431,7 @@ class _SuperAdminUserListScreenState extends State<SuperAdminUserListScreen> {
                                                           .statusSuccess),
                                             ),
                                           ),
-                                          if (role == 'supplier' &&
+                                          if (role == RoleConstants.supplier &&
                                               user['is_verified_supplier'] !=
                                                   true)
                                             const PopupMenuItem(

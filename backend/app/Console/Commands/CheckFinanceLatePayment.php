@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\UserRole;
 use App\Models\HrdViolation;
 use App\Models\Order;
 use App\Models\OrderFieldTeamPayment;
@@ -45,7 +46,7 @@ class CheckFinanceLatePayment extends Command
                 }
 
                 // Target: finance user yang bertugas, atau generic
-                $financeUsers = \App\Models\User::where('role', 'finance')->pluck('id');
+                $financeUsers = \App\Models\User::where('role', UserRole::FINANCE->value)->pluck('id');
                 $targetUserId = $financeUsers->first();
 
                 if (!$targetUserId) {
@@ -97,7 +98,7 @@ class CheckFinanceLatePayment extends Command
                     return;
                 }
 
-                $financeUsers = \App\Models\User::where('role', 'finance')->pluck('id');
+                $financeUsers = \App\Models\User::where('role', UserRole::FINANCE->value)->pluck('id');
                 $targetUserId = $financeUsers->first();
 
                 if (!$targetUserId) {

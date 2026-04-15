@@ -17,6 +17,20 @@ use Illuminate\Support\Facades\DB;
  */
 class PackageController extends Controller
 {
+    /**
+     * Infer legacy category from provider_role for backward compat.
+     */
+    private function inferCategory(string $providerRole): string
+    {
+        return match ($providerRole) {
+            'gudang'     => 'gudang',
+            'laviore'    => 'dekor',
+            'konsumsi'   => 'konsumsi',
+            'purchasing' => 'dokumen',
+            default      => 'lainnya',
+        };
+    }
+
     // GET /admin/packages
     public function index(): JsonResponse
     {
@@ -46,11 +60,13 @@ class PackageController extends Controller
             'religion_specific' => 'nullable|string|max:50',
             'is_active'         => 'boolean',
             'items'             => 'nullable|array',
-            'items.*.stock_item_id' => 'nullable|uuid|exists:stock_items,id',
-            'items.*.item_name'     => 'required_with:items|string|max:255',
-            'items.*.quantity'      => 'required_with:items|integer|min:1',
-            'items.*.unit'          => 'required_with:items|string|max:50',
-            'items.*.category'      => 'required_with:items|in:gudang,dekor,konsumsi,transportasi,dokumen',
+            'items.*.stock_item_id'      => 'nullable|uuid|exists:stock_items,id',
+            'items.*.item_name'          => 'required_with:items|string|max:255',
+            'items.*.quantity'           => 'required_with:items|integer|min:1',
+            'items.*.unit'               => 'required_with:items|string|max:50',
+            'items.*.category'           => 'nullable|string|max:100',
+            'items.*.provider_role'      => 'nullable|string|max:50',
+            'items.*.fulfillment_notes'  => 'nullable|string',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -69,6 +85,10 @@ class PackageController extends Controller
                         $item['item_name'] = $stock->item_name;
                         $item['unit']      = $stock->unit;
                     }
+                }
+                // If provider_role given but no category, infer category
+                if (!empty($item['provider_role']) && empty($item['category'])) {
+                    $item['category'] = $this->inferCategory($item['provider_role']);
                 }
                 $package->items()->create($item);
             }
@@ -118,11 +138,13 @@ class PackageController extends Controller
         $package = Package::findOrFail($id);
 
         $data = $request->validate([
-            'stock_item_id' => 'nullable|uuid|exists:stock_items,id',
-            'item_name'     => 'required|string|max:255',
-            'quantity'      => 'required|integer|min:1',
-            'unit'          => 'required|string|max:50',
-            'category'      => 'required|in:gudang,dekor,konsumsi,transportasi,dokumen',
+            'stock_item_id'     => 'nullable|uuid|exists:stock_items,id',
+            'item_name'         => 'required|string|max:255',
+            'quantity'          => 'required|integer|min:1',
+            'unit'              => 'required|string|max:50',
+            'category'          => 'nullable|string|max:100',
+            'provider_role'     => 'nullable|string|max:50',
+            'fulfillment_notes' => 'nullable|string',
         ]);
 
         if (!empty($data['stock_item_id'])) {
@@ -131,6 +153,11 @@ class PackageController extends Controller
                 $data['item_name'] = $stock->item_name;
                 $data['unit']      = $stock->unit;
             }
+        }
+
+        // If provider_role given but no category, infer category
+        if (!empty($data['provider_role']) && empty($data['category'])) {
+            $data['category'] = $this->inferCategory($data['provider_role']);
         }
 
         $item = $package->items()->create($data);
@@ -148,11 +175,13 @@ class PackageController extends Controller
         $item = PackageItem::where('package_id', $id)->findOrFail($itemId);
 
         $data = $request->validate([
-            'stock_item_id' => 'nullable|uuid|exists:stock_items,id',
-            'item_name'     => 'sometimes|string|max:255',
-            'quantity'      => 'sometimes|integer|min:1',
-            'unit'          => 'sometimes|string|max:50',
-            'category'      => 'sometimes|in:gudang,dekor,konsumsi,transportasi,dokumen',
+            'stock_item_id'     => 'nullable|uuid|exists:stock_items,id',
+            'item_name'         => 'sometimes|string|max:255',
+            'quantity'          => 'sometimes|integer|min:1',
+            'unit'              => 'sometimes|string|max:50',
+            'category'          => 'sometimes|nullable|string|max:100',
+            'provider_role'     => 'sometimes|nullable|string|max:50',
+            'fulfillment_notes' => 'sometimes|nullable|string',
         ]);
 
         if (!empty($data['stock_item_id'])) {
@@ -161,6 +190,11 @@ class PackageController extends Controller
                 $data['item_name'] = $stock->item_name;
                 $data['unit']      = $stock->unit;
             }
+        }
+
+        // If provider_role given but no category, infer category
+        if (!empty($data['provider_role']) && empty($data['category'])) {
+            $data['category'] = $this->inferCategory($data['provider_role']);
         }
 
         $item->update($data);
@@ -182,11 +216,33 @@ class PackageController extends Controller
     }
 
     // GET /admin/stock-items — list stok untuk dropdown saat buat/edit paket
-    public function stockItems(): JsonResponse
+    // Accepts optional ?owner_role= query param to filter by role
+    public function stockItems(Request $request): JsonResponse
     {
-        $items = StockItem::orderBy('item_name')
-            ->get(['id', 'item_name', 'category', 'unit', 'current_quantity', 'minimum_quantity']);
+        $query = StockItem::orderBy('item_name');
+
+        if ($request->filled('owner_role')) {
+            $query->where('owner_role', $request->query('owner_role'));
+        }
+
+        $items = $query->get(['id', 'item_name', 'category', 'owner_role', 'unit', 'current_quantity', 'minimum_quantity']);
 
         return response()->json(['success' => true, 'data' => $items]);
+    }
+
+    // GET /admin/provider-roles — list semua provider role yang bisa menjadi penyedia item
+    public function providerRoles(): JsonResponse
+    {
+        $roles = \App\Models\Role::where('is_active', true)
+            ->where(function ($q) {
+                $q->where('can_have_inventory', true)
+                  ->orWhere('is_vendor', true)
+                  ->orWhere('slug', 'purchasing')
+                  ->orWhere('slug', 'gudang');
+            })
+            ->orderBy('sort_order')
+            ->get(['slug', 'label', 'color_hex', 'icon_name']);
+
+        return response()->json(['success' => true, 'data' => $roles]);
     }
 }

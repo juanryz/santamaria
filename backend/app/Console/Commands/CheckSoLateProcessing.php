@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\UserRole;
 use App\Models\HrdViolation;
 use App\Models\Order;
 use App\Models\SystemThreshold;
@@ -43,7 +44,7 @@ class CheckSoLateProcessing extends Command
                 // Jika belum ada SO yang ambil, buat violation terhadap role
                 if (!$soUserId) {
                     // Notif ke semua SO saja tanpa violation user spesifik
-                    NotificationService::sendToRole('service_officer', 'ALARM',
+                    NotificationService::sendToRole(UserRole::SERVICE_OFFICER->value, 'ALARM',
                         '⚠ Order Menunggu Konfirmasi',
                         "Order {$order->order_number} sudah {$minutesPending} menit belum dikonfirmasi!",
                         ['order_id' => $order->id, 'action' => 'confirm_order']

@@ -98,6 +98,14 @@ class ConfigController extends Controller
                 'terms_and_conditions' => TermsAndConditions::current()?->only(['version', 'title', 'content', 'effective_date']),
 
                 'order_state_machine' => OrderStateMachine::transitionMap(),
+
+                // Dynamic roles — full list so Flutter never needs to hardcode
+                'roles' => \App\Models\Role::where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->get(['slug', 'label', 'description', 'can_have_inventory', 'is_vendor',
+                           'is_viewer_only', 'can_manage_orders', 'receives_order_alarm',
+                           'color_hex', 'icon_name', 'sort_order'])
+                    ->toArray(),
             ],
         ]);
     }

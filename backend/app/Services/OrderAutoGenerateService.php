@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\UserRole;
 use App\Models\Order;
 use App\Models\FieldAttendance;
 use App\Models\OrderEquipmentItem;
@@ -34,10 +35,10 @@ class OrderAutoGenerateService
         $scheduledDate = $order->scheduled_at ? $order->scheduled_at->toDateString() : now()->toDateString();
 
         $assignments = [
-            ['user_id' => $order->dekor_user_id, 'role' => 'dekor'],
-            ['user_id' => $order->konsumsi_user_id, 'role' => 'konsumsi'],
-            ['user_id' => $order->pemuka_agama_id, 'role' => 'pemuka_agama'],
-            ['user_id' => $order->tukang_foto_id, 'role' => 'tukang_foto'],
+            ['user_id' => $order->dekor_user_id, 'role' => UserRole::DEKOR->value],
+            ['user_id' => $order->konsumsi_user_id, 'role' => UserRole::KONSUMSI->value],
+            ['user_id' => $order->pemuka_agama_id, 'role' => UserRole::PEMUKA_AGAMA->value],
+            ['user_id' => $order->tukang_foto_id, 'role' => UserRole::TUKANG_FOTO->value],
         ];
 
         foreach ($assignments as $a) {

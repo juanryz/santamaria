@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\HRD;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\HrdViolation;
 use Illuminate\Http\JsonResponse;
@@ -96,7 +97,7 @@ class ViolationController extends Controller
         ]);
 
         // Notif Owner
-        \App\Services\NotificationService::sendToRole('owner', 'ALARM',
+        \App\Services\NotificationService::sendToRole(UserRole::OWNER->value, 'ALARM',
             '⚠ Pelanggaran Dieskalasi ke Owner',
             "HRD: {$violation->description}. Perlu tindakan Owner.",
             ['violation_id' => $violation->id, 'action' => 'view_violation']

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\UserRole;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\PemukaAgamaAssignment;
@@ -21,7 +22,7 @@ class AssignPemukaAgama implements ShouldQueue
     public function handle(): void
     {
         // AI matching: pilih pemuka agama sesuai agama almarhum yang tersedia
-        $candidate = User::where('role', 'pemuka_agama')
+        $candidate = User::where('role', UserRole::PEMUKA_AGAMA->value)
             ->whereNotNull('device_fcm_token')
             ->first();
 

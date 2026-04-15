@@ -83,14 +83,14 @@ class NotificationService
         $ownerPriority = $violation->severity === 'high' ? 'HIGH'  : 'NORMAL';
 
         // Alarm ke HRD
-        self::sendToRole('hrd', $hrdPriority,
+        self::sendToRole(UserRole::HRD->value, $hrdPriority,
             "{$severityLabel} Pelanggaran Ketentuan",
             "{$user->name} ({$user->role}): {$violation->description}",
             ['violation_id' => $violation->id, 'action' => 'hrd_review']
         );
 
         // Notif ke Owner
-        self::sendToRole('owner', $ownerPriority,
+        self::sendToRole(UserRole::OWNER->value, $ownerPriority,
             "Catatan HRD: {$user->name}",
             $violation->description,
             ['violation_id' => $violation->id]

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Enums\ProcurementStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ProcurementRequest;
 use App\Models\SupplierTransaction;
@@ -51,7 +52,7 @@ class ProcurementApprovalController extends Controller
 
         DB::transaction(function () use ($pr, $winnerQuote, $request) {
             $pr->update([
-                'status'              => 'finance_approved',
+                'status'              => ProcurementStatus::PURCHASING_APPROVED->value,
                 'finance_user_id'     => $request->user()->id,
                 'finance_approved_at' => now(),
             ]);

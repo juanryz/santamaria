@@ -85,6 +85,13 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::put('/users/{id}/deactivate',      [\App\Http\Controllers\SuperAdmin\UserController::class, 'deactivate']);
             Route::put('/users/{id}/activate',        [\App\Http\Controllers\SuperAdmin\UserController::class, 'activate']);
             Route::put('/users/{id}/verify-supplier', [\App\Http\Controllers\SuperAdmin\UserController::class, 'verifySupplier']);
+
+            // Role management (dynamic roles)
+            Route::get('/roles',                      [\App\Http\Controllers\SuperAdmin\RoleController::class, 'index']);
+            Route::post('/roles',                     [\App\Http\Controllers\SuperAdmin\RoleController::class, 'store']);
+            Route::put('/roles/{id}',                 [\App\Http\Controllers\SuperAdmin\RoleController::class, 'update']);
+            Route::delete('/roles/{id}',              [\App\Http\Controllers\SuperAdmin\RoleController::class, 'destroy']);
+            Route::get('/roles/{slug}/users',         [\App\Http\Controllers\SuperAdmin\RoleController::class, 'users']);
         });
 
     // ── Authenticated + non-viewer ────────────────────────────────────────────
@@ -113,6 +120,9 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             // v1.17 — Order acceptance / T&C signature
             Route::get('/orders/{id}/acceptance',                  [\App\Http\Controllers\Consumer\AcceptanceController::class,    'show']);
             Route::post('/orders/{id}/acceptance/sign',            [\App\Http\Controllers\Consumer\AcceptanceController::class,    'sign']);
+            // Tukang Jaga item deliveries (keluarga konfirmasi)
+            Route::get('/orders/{orderId}/deliveries',              [\App\Http\Controllers\Consumer\FamilyDeliveryController::class, 'index']);
+            Route::post('/orders/{orderId}/deliveries/{deliveryId}/confirm', [\App\Http\Controllers\Consumer\FamilyDeliveryController::class, 'confirm']);
         });
 
         // ── Service Officer ───────────────────────────────────────────────────
@@ -122,7 +132,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/orders/{id}',               [\App\Http\Controllers\ServiceOfficer\OrderController::class,  'show']);
             Route::delete('/orders/{id}',            [\App\Http\Controllers\ServiceOfficer\OrderController::class,  'destroy']);
             Route::put('/orders/{id}/submit',        [\App\Http\Controllers\ServiceOfficer\OrderController::class,  'submit']);
-            // v1.9 — Confirm dengan scheduled_at + estimated_duration_hours (menggantikan submit)
+            // DEPRECATED v2.0 — confirm is now done atomically in store(). Kept to return helpful error to old clients.
             Route::put('/orders/{id}/confirm',       [\App\Http\Controllers\ServiceOfficer\OrderController::class,  'confirm']);
             Route::post('/orders/{id}/addons',       [\App\Http\Controllers\OrderAddOnController::class,            'store']);
             Route::get('/packages',                  [\App\Http\Controllers\ServiceOfficer\OrderController::class,  'packages']);
@@ -158,16 +168,11 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
                 Route::post('/documentation/orders/{id}/drive-link',  [\App\Http\Controllers\Admin\DocumentationController::class, 'attachDriveLink']);
                 Route::delete('/documentation/photos/{photoId}',      [\App\Http\Controllers\Admin\DocumentationController::class, 'deletePhoto']);
 
-                // ── Manajemen Paket (dipindah dari owner) ─────────────────
+                // ── Manajemen Paket — GET: admin + owner, write: admin only ──
                 Route::get('/packages',                       [\App\Http\Controllers\Admin\PackageController::class, 'index']);
-                Route::post('/packages',                      [\App\Http\Controllers\Admin\PackageController::class, 'store']);
                 Route::get('/packages/{id}',                  [\App\Http\Controllers\Admin\PackageController::class, 'show']);
-                Route::put('/packages/{id}',                  [\App\Http\Controllers\Admin\PackageController::class, 'update']);
-                Route::delete('/packages/{id}',               [\App\Http\Controllers\Admin\PackageController::class, 'destroy']);
-                Route::post('/packages/{id}/items',           [\App\Http\Controllers\Admin\PackageController::class, 'addItem']);
-                Route::put('/packages/{id}/items/{itemId}',   [\App\Http\Controllers\Admin\PackageController::class, 'updateItem']);
-                Route::delete('/packages/{id}/items/{itemId}',[\App\Http\Controllers\Admin\PackageController::class, 'removeItem']);
                 Route::get('/stock-items',                    [\App\Http\Controllers\Admin\PackageController::class, 'stockItems']);
+                Route::get('/provider-roles',                 [\App\Http\Controllers\Admin\PackageController::class, 'providerRoles']);
 
                 // ── Artikel / Blog ───────────────────────────────────────
                 Route::get('/articles',                  [\App\Http\Controllers\Admin\ArticleController::class,   'index']);
@@ -185,6 +190,26 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
                 Route::post('/obituaries/{id}/photo',        [\App\Http\Controllers\Admin\ObituaryController::class, 'uploadPhoto']);
                 Route::post('/obituaries/from-order/{orderId}', [\App\Http\Controllers\Admin\ObituaryController::class, 'createFromOrder']);
                 Route::delete('/obituaries/{id}',            [\App\Http\Controllers\Admin\ObituaryController::class, 'destroy']);
+
+                // Tukang jaga management
+                Route::get('/tukang-jaga/wage-configs',            [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'wageConfigs']);
+                Route::post('/tukang-jaga/wage-configs',           [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'storeWageConfig']);
+                Route::put('/tukang-jaga/wage-configs/{id}',       [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'updateWageConfig']);
+                Route::get('/orders/{orderId}/shifts',             [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'orderShifts']);
+                Route::post('/orders/{orderId}/shifts/generate',   [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'generateShifts']);
+                Route::put('/shifts/{id}/assign',                  [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'assignShift']);
+            });
+
+        // ── Package write routes — admin only (owner excluded) ────────────────
+        Route::middleware(['auth:sanctum', 'role:' . UserRole::ADMIN->value])
+            ->prefix('admin')
+            ->group(function () {
+                Route::post('/packages',                      [\App\Http\Controllers\Admin\PackageController::class, 'store']);
+                Route::put('/packages/{id}',                  [\App\Http\Controllers\Admin\PackageController::class, 'update']);
+                Route::delete('/packages/{id}',               [\App\Http\Controllers\Admin\PackageController::class, 'destroy']);
+                Route::post('/packages/{id}/items',           [\App\Http\Controllers\Admin\PackageController::class, 'addItem']);
+                Route::put('/packages/{id}/items/{itemId}',   [\App\Http\Controllers\Admin\PackageController::class, 'updateItem']);
+                Route::delete('/packages/{id}/items/{itemId}',[\App\Http\Controllers\Admin\PackageController::class, 'removeItem']);
             });
 
         // ── Gudang ────────────────────────────────────────────────────────────
@@ -218,6 +243,17 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::post('/supplier-ratings',                  [\App\Http\Controllers\Gudang\ProcurementController::class,  'rateSupplier']);
         });
 
+        // ── Role Stock — akses generik untuk semua role internal yang punya inventaris ─
+        Route::middleware(['auth:sanctum'])->prefix('role-stock')->group(function () {
+            Route::get('/items',                             [\App\Http\Controllers\RoleStock\RoleStockController::class, 'index']);
+            Route::post('/items',                            [\App\Http\Controllers\RoleStock\RoleStockController::class, 'store']);
+            Route::put('/items/{id}',                        [\App\Http\Controllers\RoleStock\RoleStockController::class, 'update']);
+            Route::delete('/items/{id}',                     [\App\Http\Controllers\RoleStock\RoleStockController::class, 'destroy']);
+            Route::get('/orders/{orderId}/checklist',         [\App\Http\Controllers\RoleStock\RoleStockController::class, 'orderChecklist']);
+            Route::put('/checklist/{id}/check',              [\App\Http\Controllers\RoleStock\RoleStockController::class, 'checkItem']);
+            Route::put('/checklist/{id}/uncheck',            [\App\Http\Controllers\RoleStock\RoleStockController::class, 'uncheckItem']);
+        });
+
         // ── Finance ───────────────────────────────────────────────────────────
         Route::middleware('role:' . implode(',', [UserRole::FINANCE->value, UserRole::PURCHASING->value]))->prefix('finance')->group(function () {
             Route::get('/purchase-orders',             [\App\Http\Controllers\Finance\PurchaseOrderController::class,         'index']);
@@ -231,6 +267,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/orders/{id}/payment-proof',   [\App\Http\Controllers\Finance\ConsumerPaymentController::class,       'getPaymentProof']);
             Route::put('/orders/{id}/payment/verify',  [\App\Http\Controllers\Finance\ConsumerPaymentController::class,       'verify']);
             Route::put('/orders/{id}/payment/reject',  [\App\Http\Controllers\Finance\ConsumerPaymentController::class,       'reject']);
+            Route::post('/orders/{id}/cash-paid',      [\App\Http\Controllers\Finance\ConsumerPaymentController::class,       'markCashPaid']);
 
             // v1.10 — Field team payments
             Route::get('/orders/{id}/field-team',      [\App\Http\Controllers\Finance\FieldTeamController::class,             'index']);
@@ -250,6 +287,17 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/supplier-transactions/summary',           [\App\Http\Controllers\Finance\SupplierTransactionController::class,  'summary']);
             Route::get('/supplier-transactions/{id}',              [\App\Http\Controllers\Finance\SupplierTransactionController::class,  'show']);
             Route::put('/supplier-transactions/{id}/pay',          [\App\Http\Controllers\Finance\SupplierTransactionController::class,  'pay']);
+
+            // v1.30 — Laporan Keuangan (Finance + Owner)
+            Route::get('/dashboard',                               [\App\Http\Controllers\Finance\FinanceDashboardController::class,     'index']);
+            Route::get('/reports/summary',                         [\App\Http\Controllers\Finance\FinanceReportController::class,        'summary']);
+            Route::get('/reports/orders',                          [\App\Http\Controllers\Finance\FinanceReportController::class,        'orders']);
+            Route::get('/reports/receivables',                     [\App\Http\Controllers\Finance\FinanceReportController::class,        'receivables']);
+            Route::get('/reports/expenses',                        [\App\Http\Controllers\Finance\FinanceReportController::class,        'expenses']);
+            Route::get('/reports/export',                          [\App\Http\Controllers\Finance\FinanceReportController::class,        'export']);
+            Route::get('/transactions',                            [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'index']);
+            Route::post('/transactions/correction',                [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'correction']);
+            Route::put('/transactions/{id}/void',                  [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'void']);
         });
 
         // ── Driver ────────────────────────────────────────────────────────────
@@ -268,6 +316,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             // v1.9 — Bukti lapangan
             Route::post('/orders/{id}/bukti',  [\App\Http\Controllers\Driver\BuktiController::class,   'store']);
             Route::get('/orders/{id}/bukti',   [\App\Http\Controllers\Driver\BuktiController::class,   'index']);
+            Route::post('/orders/{orderId}/deliver-to-jaga', [\App\Http\Controllers\Driver\TukangJagaDeliveryController::class, 'deliver']);
             // v1.20 — Vehicle management (KM, fuel, inspection, maintenance)
             Route::post('/vehicles/{vehicleId}/km-log',       [\App\Http\Controllers\Driver\VehicleManagementController::class, 'storeKmLog']);
             Route::get('/vehicles/{vehicleId}/km-logs',       [\App\Http\Controllers\Driver\VehicleManagementController::class, 'getKmLogs']);
@@ -432,6 +481,16 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::post('/orders/{orderId}/acceptance-letter/sign-saksi', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'signSaksi']);
             Route::get('/orders/{orderId}/acceptance-letter/pdf', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'exportPdf']);
             Route::post('/orders/{orderId}/acceptance-letter/send-wa', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'sendWa']);
+        });
+
+        // ── Tukang Jaga ───────────────────────────────────────────────────────────────
+        Route::middleware(['role:tukang_jaga'])->prefix('tukang-jaga')->group(function () {
+            Route::get('/shifts',                              [\App\Http\Controllers\TukangJaga\ShiftController::class, 'myShifts']);
+            Route::get('/shifts/{id}',                         [\App\Http\Controllers\TukangJaga\ShiftController::class, 'show']);
+            Route::post('/shifts/{id}/checkin',                [\App\Http\Controllers\TukangJaga\ShiftController::class, 'checkin']);
+            Route::post('/shifts/{id}/checkout',               [\App\Http\Controllers\TukangJaga\ShiftController::class, 'checkout']);
+            Route::get('/orders/{orderId}/deliveries',         [\App\Http\Controllers\TukangJaga\DeliveryController::class, 'index']);
+            Route::post('/shifts/{shiftId}/receive',           [\App\Http\Controllers\TukangJaga\DeliveryController::class, 'receive']);
         });
 
         // ── Tukang Foto — Gallery Links (Google Drive) ────────────────────

@@ -7,6 +7,7 @@ import '../../../shared/widgets/glass_widget.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'super_admin_user_list_screen.dart';
 import 'super_admin_master_data_screen.dart';
+import 'super_admin_role_management_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 
 class SuperAdminDashboardScreen extends StatelessWidget {
@@ -145,6 +146,20 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const SuperAdminMasterDataScreen()),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildMenuCard(
+                    context,
+                    icon: Icons.badge_outlined,
+                    title: 'Manajemen Role',
+                    subtitle: 'Tambah, edit, dan kelola role kustom sistem',
+                    color: _roleColor,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => SuperAdminRoleManagementScreen(
+                              apiClient: ApiClient())),
                     ),
                   ),
                   const SizedBox(height: 32),

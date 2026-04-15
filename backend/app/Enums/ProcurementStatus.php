@@ -8,7 +8,7 @@ enum ProcurementStatus: string
     case OPEN = 'open';
     case EVALUATING = 'evaluating';
     case AWARDED = 'awarded';
-    case PURCHASING_APPROVED = 'purchasing_approved';
+    case PURCHASING_APPROVED = 'finance_approved';
     case GOODS_RECEIVED = 'goods_received';
     case PARTIAL_RECEIVED = 'partial_received';
     case COMPLETED = 'completed';
@@ -26,7 +26,7 @@ enum ProcurementStatus: string
             self::OPEN => 'Terbuka',
             self::EVALUATING => 'Evaluasi',
             self::AWARDED => 'Terpilih',
-            self::PURCHASING_APPROVED => 'Disetujui Purchasing',
+            self::PURCHASING_APPROVED => 'Disetujui Finance',
             self::GOODS_RECEIVED => 'Barang Diterima',
             self::PARTIAL_RECEIVED => 'Diterima Sebagian',
             self::COMPLETED => 'Selesai',

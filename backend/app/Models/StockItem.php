@@ -12,6 +12,7 @@ class StockItem extends Model
     protected $fillable = [
         'item_name',
         'category',
+        'owner_role',
         'current_quantity',
         'minimum_quantity',
         'unit',

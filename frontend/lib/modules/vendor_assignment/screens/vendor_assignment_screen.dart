@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/constants/role_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../providers/auth_provider.dart';
@@ -32,14 +33,14 @@ class _VendorAssignmentScreenState extends State<VendorAssignmentScreen> {
   Color get _roleColor => AppColors.roleColor(_role);
 
   String _statusOf(Map<String, dynamic> a) {
-    if (_role == 'pemuka_agama') return a['response'] as String? ?? 'pending';
-    if (_role == 'dekor') return a['dekor_status'] as String? ?? 'pending';
-    if (_role == 'konsumsi') return a['konsumsi_status'] as String? ?? 'pending';
+    if (_role == RoleConstants.pemukaAgama) return a['response'] as String? ?? 'pending';
+    if (_role == RoleConstants.dekor) return a['dekor_status'] as String? ?? 'pending';
+    if (_role == RoleConstants.konsumsi) return a['konsumsi_status'] as String? ?? 'pending';
     return a['status'] as String? ?? 'pending';
   }
 
   Map<String, dynamic> _orderOf(Map<String, dynamic> a) {
-    if (_role == 'pemuka_agama') {
+    if (_role == RoleConstants.pemukaAgama) {
       return Map<String, dynamic>.from(a['order'] as Map? ?? {});
     }
     return a;
@@ -159,9 +160,9 @@ class _VendorAssignmentScreenState extends State<VendorAssignmentScreen> {
   @override
   Widget build(BuildContext context) {
     final roleLabel = switch (_role) {
-      'dekor' => 'Dekorasi',
-      'konsumsi' => 'Konsumsi',
-      'pemuka_agama' => 'Pemuka Agama',
+      RoleConstants.dekor => 'Dekorasi',
+      RoleConstants.konsumsi => 'Konsumsi',
+      RoleConstants.pemukaAgama => 'Pemuka Agama',
       _ => 'Vendor',
     };
 

@@ -21,6 +21,7 @@ enum UserRole: string
     case VIEWER = 'viewer';
     case TUKANG_FOTO = 'tukang_foto';
     case TUKANG_ANGKAT_PETI = 'tukang_angkat_peti';
+    case TUKANG_JAGA = 'tukang_jaga';
 
     public static function values(): array
     {
