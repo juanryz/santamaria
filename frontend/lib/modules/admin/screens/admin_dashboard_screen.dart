@@ -12,6 +12,8 @@ import 'admin_package_management_screen.dart';
 import 'admin_fleet_management_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 import 'admin_documentation_screen.dart';
+import 'admin_master_data_screen.dart';
+import '../../../shared/screens/employee_command_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -156,6 +158,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           tint: AppColors.glassWhite,
           borderColor: AppColors.glassBorder,
           padding: const EdgeInsets.all(8),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleAdmin))),
+          child: const Icon(Icons.campaign, color: AppColors.roleAdmin, size: 20),
+        ),
+        const SizedBox(width: 8),
+        GlassWidget(
+          borderRadius: 12,
+          blurSigma: 10,
+          tint: AppColors.glassWhite,
+          borderColor: AppColors.glassBorder,
+          padding: const EdgeInsets.all(8),
           onTap: () async {
             final nav = Navigator.of(context);
             await context.read<AuthProvider>().logout();
@@ -193,6 +206,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildQuickActions() {
     final actions = [
+      (
+        Icons.dataset_outlined,
+        'Master Data',
+        'Paket, threshold, armada, & lainnya',
+        () => Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => const AdminMasterDataScreen())),
+      ),
       (
         Icons.inventory_2_outlined,
         'Manajemen Paket',

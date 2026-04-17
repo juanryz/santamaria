@@ -113,7 +113,8 @@ class OrderController extends Controller
             'destination_address'      => 'required|string',
             'scheduled_at'             => 'required|date|after:now',
             'estimated_duration_hours' => 'required|numeric|min:0.5|max:24',
-            'final_price'              => 'required|numeric|min:0',
+            // final_price TIDAK diinput manual — dihitung otomatis dari billing_item_master
+            // Bisa di-override oleh Owner/Admin setelah order selesai (via order_billing_items.tambahan/kembali)
             'payment_method'           => 'required|in:cash,transfer',
             'pj_name'                  => 'required|string|max:255',
             'pj_signature'             => 'required|string',
@@ -372,10 +373,15 @@ class OrderController extends Controller
     public function submit($id, Request $request)
     {
         $request->validate([
-            'package_id' => 'required|uuid|exists:packages,id',
-            'final_price' => 'required|numeric',
-            'so_notes' => 'nullable|string',
-            'estimated_guests' => 'nullable|integer',
+            'package_id'               => 'required|uuid|exists:packages,id',
+            'addon_ids'                => 'nullable|array',
+            'addon_ids.*'              => 'uuid|exists:add_on_services,id',
+            'scheduled_at'             => 'required|date|after:now',
+            'estimated_duration_hours' => 'required|numeric|min:0.5|max:24',
+            'payment_method'           => 'required|in:cash,transfer',
+            'so_notes'                 => 'nullable|string',
+            'estimated_guests'         => 'nullable|integer',
+            // final_price TIDAK diinput manual — dihitung dari billing_item_master
         ]);
 
         $order = Order::findOrFail($id);
@@ -389,12 +395,15 @@ class OrderController extends Controller
 
         return DB::transaction(function () use ($order, $request) {
             $order->update([
-                'package_id' => $request->package_id,
-                'final_price' => $request->final_price,
-                'so_notes' => $request->so_notes,
-                'estimated_guests' => $request->estimated_guests ?? $order->estimated_guests,
-                'so_user_id' => $request->user()->id,
-                'so_submitted_at' => now(),
+                'package_id'               => $request->package_id,
+                'scheduled_at'             => $request->scheduled_at,
+                'estimated_duration_hours' => $request->estimated_duration_hours,
+                'payment_method'           => $request->payment_method,
+                'so_notes'                 => $request->so_notes,
+                'estimated_guests'         => $request->estimated_guests ?? $order->estimated_guests,
+                'so_user_id'               => $request->user()->id,
+                'so_submitted_at'          => now(),
+                // final_price tidak diset manual — GenerateInvoiceDraft job akan hitung dari billing_item_master
                 'status' => 'pending' // Still pending, so it stays on SO list and Admin list as actionable
             ]);
 

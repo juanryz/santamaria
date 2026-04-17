@@ -2,6 +2,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration {
     public function up(): void
@@ -25,7 +26,6 @@ return new class extends Migration {
             // corrections
             $table->boolean('is_correction')->default(false);
             $table->uuid('original_transaction_id')->nullable();
-            $table->foreign('original_transaction_id')->references('id')->on('financial_transactions')->nullOnDelete();
             $table->text('correction_reason')->nullable();
             $table->timestamp('corrected_at')->nullable();
             $table->foreignUuid('corrected_by')->nullable()->constrained('users')->nullOnDelete();
@@ -44,6 +44,11 @@ return new class extends Migration {
             $table->index('order_id');
             $table->index('direction');
             $table->index('is_void');
+        });
+
+        // Self-referencing FK must be added after table exists
+        Schema::table('financial_transactions', function (Blueprint $table) {
+            $table->foreign('original_transaction_id')->references('id')->on('financial_transactions')->nullOnDelete();
         });
 
         Schema::create('financial_reports', function (Blueprint $table) {

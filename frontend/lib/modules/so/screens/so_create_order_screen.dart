@@ -10,6 +10,9 @@ import '../../../data/repositories/so_repository.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
+import '../../../shared/widgets/funeral_home_picker.dart';
+import '../../../shared/widgets/cemetery_picker.dart';
+import '../../../shared/widgets/loading_button.dart';
 
 class SOCreateOrderScreen extends StatefulWidget {
   final SORepository repo;
@@ -39,6 +42,8 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
   final _dukaAddressController = TextEditingController();
   final _pickupAddressController = TextEditingController();
   final _destinationAddressController = TextEditingController();
+  String? _selectedFuneralHomeId;
+  String? _selectedCemeteryId;
   String? _selectedPackageId;
   Map<String, dynamic>? _selectedPackage;
   final List<String> _selectedAddonIds = [];
@@ -135,6 +140,10 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
   Future<void> _goToStep(int step) async {
     if (step == 1) {
       if (!_step1Key.currentState!.validate()) return;
+      if (_selectedFuneralHomeId == null) {
+        _snack('Pilih rumah duka terlebih dahulu.');
+        return;
+      }
       if (_scheduledAt == null) {
         _snack('Tentukan jadwal layanan terlebih dahulu.');
         return;
@@ -210,8 +219,10 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
         'deceased_dod': DateFormat('yyyy-MM-dd').format(_deceasedDod),
         'religion': _religion,
         'duka_address': _dukaAddressController.text.trim(),
+        'funeral_home_id': _selectedFuneralHomeId,
         'pickup_address': _pickupAddressController.text.trim(),
         'destination_address': _destinationAddressController.text.trim(),
+        'cemetery_id': _selectedCemeteryId,
         'package_id': _selectedPackageId,
         'addon_ids': _selectedAddonIds,
         'so_notes': _soNotesController.text.trim().isEmpty
@@ -221,8 +232,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
         'scheduled_at': _scheduledAt!.toIso8601String(),
         'estimated_duration_hours':
             double.tryParse(_durationController.text.trim()) ?? 3,
-        'final_price':
-            double.tryParse(_finalPriceController.text.trim()) ?? 0,
+        // final_price tidak dikirim — dihitung otomatis dari billing_item_master
         'payment_method': _paymentMethod,
         'pj_name': _pjNameController.text.trim(),
         'pj_signature': pjBase64,
@@ -446,13 +456,24 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
               onChanged: (v) => setState(() => _religion = v!),
             ),
             const SizedBox(height: 12),
-            _formField(
-              controller: _dukaAddressController,
-              label: 'Alamat Duka *',
-              icon: Icons.home_outlined,
-              maxLines: 2,
-              validator: (v) => v!.trim().isEmpty ? 'Wajib diisi' : null,
+            // Rumah Duka picker (required)
+            FuneralHomePicker(
+              isAdmin: true,
+              onSelected: (id, name) {
+                setState(() {
+                  _selectedFuneralHomeId = id;
+                  _dukaAddressController.text = name;
+                });
+              },
             ),
+            if (_selectedFuneralHomeId == null && _dukaAddressController.text.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Wajib pilih rumah duka',
+                  style: TextStyle(color: AppColors.statusDanger, fontSize: 11),
+                ),
+              ),
             const SizedBox(height: 12),
             _formField(
               controller: _pickupAddressController,
@@ -468,6 +489,16 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
               icon: Icons.flag_outlined,
               maxLines: 2,
               validator: (v) => v!.trim().isEmpty ? 'Wajib diisi' : null,
+            ),
+            const SizedBox(height: 12),
+            // Pemakaman / Krematorium picker (optional)
+            CemeteryPicker(
+              isAdmin: true,
+              onSelected: (id, name) {
+                setState(() {
+                  _selectedCemeteryId = id;
+                });
+              },
             ),
 
             const SizedBox(height: 24),
@@ -586,20 +617,10 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
 
             const SizedBox(height: 24),
 
-            // ── Harga & Pembayaran ────────────────────────────────────────────
-            _sectionLabel('Harga & Pembayaran'),
-            _formField(
-              controller: _finalPriceController,
-              label: 'Harga Akhir (Rp) *',
-              icon: Icons.payments_outlined,
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Wajib diisi';
-                if (double.tryParse(v.trim()) == null) return 'Angka tidak valid';
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
+            // ── Pembayaran ────────────────────────────────────────────────────
+            // Harga akhir TIDAK diinput manual — dihitung otomatis dari billing_item_master
+            // setelah order dikonfirmasi (via GenerateInvoiceDraft)
+            _sectionLabel('Metode Pembayaran'),
             _paymentToggle(),
 
             const SizedBox(height: 32),
@@ -619,10 +640,6 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
 
   Widget _buildStep2() {
     final pkgName = _selectedPackage?['name'] as String? ?? '-';
-    final priceText = _finalPriceController.text.isNotEmpty
-        ? _currency
-            .format(double.tryParse(_finalPriceController.text) ?? 0)
-        : '-';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
@@ -655,7 +672,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
                           ? '-'
                           : _deceasedNameController.text.trim()),
                   _summaryRow('Paket', pkgName),
-                  _summaryRow('Total Harga', priceText),
+                  _summaryRow('Total Harga', 'Dihitung otomatis setelah dikonfirmasi'),
                   _summaryRow('Metode Bayar',
                       _paymentMethod == 'cash' ? 'Cash' : 'Transfer'),
                 ],
@@ -729,11 +746,6 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
   // ══════════════════════════════════════════════════════════════════════════════
 
   Widget _buildStep3() {
-    final priceText = _finalPriceController.text.isNotEmpty
-        ? _currency
-            .format(double.tryParse(_finalPriceController.text) ?? 0)
-        : '-';
-
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
       child: Column(
@@ -766,7 +778,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
                         : _dukaAddressController.text.trim()),
                 _summaryRow(
                     'Paket', _selectedPackage?['name'] as String? ?? '-'),
-                _summaryRow('Harga Akhir', priceText),
+                _summaryRow('Harga', 'Dihitung otomatis setelah dikonfirmasi'),
                 _summaryRow(
                     'Metode Bayar',
                     _paymentMethod == 'cash' ? 'Cash' : 'Transfer'),
@@ -811,36 +823,13 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton.icon(
-              onPressed: _isSubmitting ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _roleColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.check_circle_outline,
-                      color: Colors.white),
-              label: Text(
-                _isSubmitting ? 'Membuat Order...' : 'BUAT ORDER',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
+          LoadingButton(
+            label: 'BUAT ORDER',
+            loadingLabel: 'Membuat Order...',
+            isLoading: _isSubmitting,
+            onPressed: _submit,
+            color: _roleColor,
+            icon: Icons.check_circle_outline,
           ),
         ],
       ),

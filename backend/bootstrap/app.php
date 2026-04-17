@@ -25,6 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Global: block write ops for viewer accounts on ALL API routes
         $middleware->appendToGroup('api', \App\Http\Middleware\EnsureNotViewer::class);
+
+        // Log every authenticated API request to activity_logs
+        $middleware->appendToGroup('api', \App\Http\Middleware\ActivityLogger::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
 

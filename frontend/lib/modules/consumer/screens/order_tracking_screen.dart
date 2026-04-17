@@ -10,6 +10,7 @@ import '../../../shared/widgets/order_timeline_widget.dart';
 import 'consumer_gallery_screen.dart';
 import 'consumer_payment_screen.dart';
 import 'consumer_acceptance_screen.dart';
+import 'consumer_amendment_screen.dart';
 import '../../tukang_foto/screens/gallery_link_screen.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -262,6 +263,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildStatusBanner(),
+                    const SizedBox(height: 16),
+                    _buildProgressBar(),
                     // v1.17 — Acceptance / T&C signature banner
                     if (_order!['status'] == 'confirmed' && _order!['acceptance_signed_at'] == null) ...[
                       const SizedBox(height: 12),
@@ -355,6 +358,39 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     ],
                     _buildAddonSection(),
                     const SizedBox(height: 20),
+                    // Amendment button — visible when order is confirmed or in_progress
+                    if (_order!['status'] == 'confirmed' ||
+                        _order!['status'] == 'in_progress' ||
+                        _order!['status'] == 'preparing' ||
+                        _order!['status'] == 'ready_to_dispatch' ||
+                        _order!['status'] == 'driver_assigned' ||
+                        _order!['status'] == 'delivering_equipment' ||
+                        _order!['status'] == 'equipment_arrived' ||
+                        _order!['status'] == 'picking_up_body' ||
+                        _order!['status'] == 'body_arrived' ||
+                        _order!['status'] == 'in_ceremony') ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ConsumerAmendmentScreen(
+                                orderId: widget.orderId,
+                                orderNumber: _order!['order_number'] ?? '',
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.add_shopping_cart_outlined, size: 18),
+                          label: const Text('Tambahan Layanan'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _roleColor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     _buildPhotoSection(),
                     const SizedBox(height: 40),
                   ],
@@ -387,8 +423,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 letterSpacing: 1.5,
               ),
             ),
-            if (_order!['status'] != 'completed' &&
-                _order!['status'] != 'cancelled')
+            if (_order!['status'] == 'confirmed' ||
+                _order!['status'] == 'in_progress')
               TextButton.icon(
                 onPressed: _showAddAddonModal,
                 icon: const Icon(
@@ -566,22 +602,232 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         '/consumer/orders/${widget.orderId}/addons',
         data: {'add_on_service_id': addonId, 'quantity': 1},
       );
+      if (!mounted) return;
       if (res.data['success'] == true) {
-        if (!mounted) return;
         Navigator.pop(context);
         _load();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Layanan tambahan berhasil ditambahkan.'),
-          ),
+          const SnackBar(content: Text('Layanan tambahan berhasil ditambahkan.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res.data['message'] ?? 'Gagal menambahkan layanan.')),
         );
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gagal menambahkan layanan.')),
-      );
     } finally {
       if (mounted) setModalState(() => _isAddingAddon = false);
+    }
+  }
+
+  // ── Consumer Progress Bar ──────────────────────────────────────────────────
+
+  static const _consumerSteps = [
+    {'label': 'Order Diterima', 'icon': Icons.receipt_long_outlined, 'statuses': ['pending', 'awaiting_signature', 'so_review']},
+    {'label': 'Dikonfirmasi', 'icon': Icons.check_circle_outline, 'statuses': ['confirmed']},
+    {'label': 'Perlengkapan Disiapkan', 'icon': Icons.inventory_2_outlined, 'statuses': ['preparing', 'ready_to_dispatch']},
+    {'label': 'Dalam Perjalanan', 'icon': Icons.local_shipping_outlined, 'statuses': ['driver_assigned', 'delivering_equipment']},
+    {'label': 'Tiba di Lokasi', 'icon': Icons.location_on_outlined, 'statuses': ['equipment_arrived', 'picking_up_body', 'body_arrived']},
+    {'label': 'Prosesi Berlangsung', 'icon': Icons.church_outlined, 'statuses': ['in_ceremony']},
+    {'label': 'Menuju Pemakaman', 'icon': Icons.directions_car_outlined, 'statuses': ['heading_to_burial', 'burial_completed', 'returning_equipment']},
+    {'label': 'Selesai', 'icon': Icons.task_alt_outlined, 'statuses': ['completed']},
+  ];
+
+  int _currentStepIndex() {
+    final status = _order?['status'] as String? ?? '';
+    if (status == 'cancelled') return -1;
+    for (int i = 0; i < _consumerSteps.length; i++) {
+      if ((_consumerSteps[i]['statuses'] as List<String>).contains(status)) return i;
+    }
+    return 0;
+  }
+
+  Widget _buildProgressBar() {
+    final current = _currentStepIndex();
+    final isCancelled = (_order?['status'] as String? ?? '') == 'cancelled';
+    final total = _consumerSteps.length;
+    final progress = isCancelled ? 0.0 : ((current + 1) / total).clamp(0.0, 1.0);
+
+    final logs = List<Map<String, dynamic>>.from(
+      (_order?['status_logs'] as List?)?.map((l) => Map<String, dynamic>.from(l)) ?? [],
+    );
+
+    return GlassWidget(
+      borderRadius: 20,
+      blurSigma: 16,
+      tint: AppColors.glassWhite,
+      borderColor: AppColors.glassBorder,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PROGRESS LAYANAN',
+            style: TextStyle(
+              color: _roleColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Linear progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: AppColors.glassBorder,
+              valueColor: AlwaysStoppedAnimation(
+                isCancelled ? AppColors.statusDanger : AppColors.statusSuccess,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isCancelled
+                ? 'Dibatalkan'
+                : '${current + 1} dari $total langkah',
+            style: const TextStyle(color: AppColors.textHint, fontSize: 11),
+          ),
+          const SizedBox(height: 20),
+          // Step timeline
+          ...List.generate(_consumerSteps.length, (i) {
+            final step = _consumerSteps[i];
+            final label = step['label'] as String;
+            final icon = step['icon'] as IconData;
+            final stepStatuses = step['statuses'] as List<String>;
+            final isCompleted = !isCancelled && current >= 0 && i < current;
+            final isCurrent = !isCancelled && i == current;
+            final isFuture = isCancelled || current < 0 || i > current;
+            final isLast = i == _consumerSteps.length - 1;
+
+            // Find timestamp from logs
+            String? timestamp;
+            for (final s in stepStatuses) {
+              final match = logs.where((l) => l['to_status'] == s).toList();
+              if (match.isNotEmpty) {
+                timestamp = match.last['created_at'] as String?;
+                break;
+              }
+            }
+
+            return _buildStepItem(
+              label: label,
+              icon: icon,
+              isCompleted: isCompleted,
+              isCurrent: isCurrent,
+              isFuture: isFuture,
+              isLast: isLast,
+              timestamp: timestamp,
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepItem({
+    required String label,
+    required IconData icon,
+    required bool isCompleted,
+    required bool isCurrent,
+    required bool isFuture,
+    required bool isLast,
+    String? timestamp,
+  }) {
+    final dotColor = isCompleted
+        ? AppColors.statusSuccess
+        : isCurrent
+            ? _roleColor
+            : Colors.grey.shade300;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Dot + line
+          SizedBox(
+            width: 32,
+            child: Column(
+              children: [
+                Container(
+                  width: isCurrent ? 18 : 14,
+                  height: isCurrent ? 18 : 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCompleted ? dotColor : (isCurrent ? dotColor.withValues(alpha: 0.15) : Colors.grey.shade100),
+                    border: Border.all(color: dotColor, width: isCurrent ? 3 : 1.5),
+                    boxShadow: isCurrent
+                        ? [BoxShadow(color: _roleColor.withValues(alpha: 0.25), blurRadius: 8, spreadRadius: 1)]
+                        : null,
+                  ),
+                  child: isCompleted
+                      ? const Icon(Icons.check, size: 9, color: Colors.white)
+                      : null,
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      color: isCompleted ? AppColors.statusSuccess.withValues(alpha: 0.4) : Colors.grey.shade200,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Icon + label + timestamp
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Row(
+                children: [
+                  Icon(
+                    icon,
+                    size: 16,
+                    color: isFuture ? Colors.grey.shade300 : (isCurrent ? _roleColor : AppColors.textSecondary),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: isCurrent ? 14 : 13,
+                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                            color: isFuture ? Colors.grey.shade400 : AppColors.textPrimary,
+                          ),
+                        ),
+                        if (timestamp != null)
+                          Text(
+                            _fmtTs(timestamp),
+                            style: const TextStyle(fontSize: 10, color: AppColors.textHint),
+                          )
+                        else if (isFuture)
+                          const Text(
+                            'Menunggu...',
+                            style: TextStyle(fontSize: 10, color: AppColors.textHint),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtTs(String ts) {
+    try {
+      final dt = DateTime.parse(ts).toLocal();
+      return '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return ts;
     }
   }
 

@@ -9,6 +9,8 @@ import '../../auth/screens/unified_login_screen.dart';
 import 'finance_report_screen.dart';
 import 'finance_transaction_screen.dart';
 import 'finance_receivables_screen.dart';
+import '../../purchasing/screens/purchasing_wage_approval_screen.dart';
+import '../../purchasing/screens/purchasing_supplier_detail_screen.dart';
 
 const Map<String, String> categoryLabels = {
   'jasa_funeral': 'Jasa Funeral',
@@ -45,6 +47,9 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
   List<dynamic> _monthlyTrend = [];
   List<dynamic> _receivables = [];
   List<dynamic> _unpaidWages = [];
+  List<dynamic> _pendingPaymentVerify = [];
+  List<dynamic> _pendingProcurementApproval = [];
+  List<dynamic> _pendingSupplierPayment = [];
 
   static const _roleColor = AppColors.roleFinance;
 
@@ -77,6 +82,9 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
         _monthlyTrend = (data['monthly_trend'] as List<dynamic>?) ?? [];
         _receivables = (data['receivables'] as List<dynamic>?) ?? [];
         _unpaidWages = (data['unpaid_wages'] as List<dynamic>?) ?? [];
+        _pendingPaymentVerify = (data['pending_payment_verify'] as List<dynamic>?) ?? [];
+        _pendingProcurementApproval = (data['pending_procurement_approval'] as List<dynamic>?) ?? [];
+        _pendingSupplierPayment = (data['pending_supplier_payment'] as List<dynamic>?) ?? [];
         _isLoading = false;
       });
     } catch (e) {
@@ -133,6 +141,8 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                       _buildError()
                     else ...[
                       _buildStatCards(),
+                      const SizedBox(height: 28),
+                      _buildPendingActionCards(),
                       const SizedBox(height: 28),
                       _buildMonthlyTrendTable(),
                       const SizedBox(height: 28),
@@ -376,6 +386,148 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
           Text(
             label,
             style: const TextStyle(color: AppColors.textHint, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingActionCards() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Butuh Tindakan',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _pendingCard(
+                icon: Icons.verified_user_outlined,
+                label: 'Verifikasi\nPembayaran',
+                count: _pendingPaymentVerify.length,
+                color: Colors.orange,
+                onTap: () {
+                  // Navigate to payment verify list (receivables screen covers this)
+                  Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const FinanceReceivablesScreen()));
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _pendingCard(
+                icon: Icons.shopping_cart_checkout,
+                label: 'Pengadaan\nButuh Approval',
+                count: _pendingProcurementApproval.length,
+                color: Colors.blue,
+                onTap: () {},
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _pendingCard(
+                icon: Icons.store_outlined,
+                label: 'Tagihan\nSupplier',
+                count: _pendingSupplierPayment.length,
+                color: Colors.purple,
+                onTap: () {
+                  if (_pendingSupplierPayment.isNotEmpty) {
+                    final first = _pendingSupplierPayment.first;
+                    final id = first['id']?.toString() ?? '';
+                    if (id.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PurchasingSupplierDetailScreen(transactionId: id),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _pendingCard(
+                icon: Icons.groups_outlined,
+                label: 'Upah Pekerja\nLepas',
+                count: _unpaidWages.length,
+                color: AppColors.statusWarning,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PurchasingWageApprovalScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _pendingCard({
+    required IconData icon,
+    required String label,
+    required int count,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GlassWidget(
+      borderRadius: 16,
+      blurSigma: 10,
+      tint: count > 0
+          ? color.withValues(alpha: 0.05)
+          : AppColors.glassWhite,
+      borderColor: count > 0
+          ? color.withValues(alpha: 0.25)
+          : AppColors.glassBorder,
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: count > 0
+                  ? color.withValues(alpha: 0.15)
+                  : AppColors.glassBorder,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                color: count > 0 ? color : AppColors.textHint,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
           ),
         ],
       ),
@@ -867,7 +1019,99 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _showCashPaidDialog,
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColors.statusSuccess.withValues(alpha: 0.5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: const Icon(Icons.payments_outlined, size: 18, color: AppColors.statusSuccess),
+            label: const Text(
+              'Tandai Cash Lunas',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.statusSuccess),
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  void _showCashPaidDialog() {
+    final orderIdCtrl = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          backgroundColor: AppColors.backgroundSoft,
+          title: const Text('Tandai Cash Lunas',
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Masukkan ID atau nomor order cash yang sudah dibayar tunai.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: orderIdCtrl,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Order ID',
+                  prefixIcon: Icon(Icons.tag, color: AppColors.textHint, size: 20),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.statusSuccess),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final id = orderIdCtrl.text.trim();
+                      if (id.isEmpty) return;
+                      setDialog(() => isSaving = true);
+                      try {
+                        await _apiClient.dio.post('/finance/orders/$id/cash-paid');
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Order ditandai lunas (cash).'),
+                              backgroundColor: AppColors.statusSuccess,
+                            ),
+                          );
+                          _loadData();
+                        }
+                      } catch (e) {
+                        setDialog(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Gagal menandai lunas. Periksa ID order.')),
+                          );
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Tandai Lunas'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

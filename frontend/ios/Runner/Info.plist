@@ -67,6 +67,20 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Dibutuhkan untuk menyimpan foto hasil kamera.</string>
 
+	<!-- Location tracking: selalu aktif untuk monitoring karyawan -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi untuk pemantauan kehadiran dan pekerjaan lapangan.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi di latar belakang agar owner dapat memantau lokasi karyawan selama jam kerja. Anda telah menyetujui pemantauan ini saat mendaftar.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi di latar belakang untuk pemantauan karyawan 24/7.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

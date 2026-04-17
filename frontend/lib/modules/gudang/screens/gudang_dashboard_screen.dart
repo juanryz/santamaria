@@ -11,6 +11,9 @@ import 'stock_alert_screen.dart';
 import 'equipment_loan_list_screen.dart';
 import 'stock_form_screen.dart';
 import 'vehicle_maintenance_screen.dart';
+import 'gudang_receive_screen.dart';
+import 'gudang_item_return_screen.dart';
+import '../../../shared/screens/employee_command_screen.dart';
 
 class GudangDashboardScreen extends StatefulWidget {
   const GudangDashboardScreen({super.key});
@@ -147,6 +150,17 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
                             );
                           },
                           child: const Icon(Icons.logout, color: AppColors.textSecondary, size: 20),
+                        ),
+                        const SizedBox(width: 8),
+                        GlassWidget(
+                          borderRadius: 12,
+                          blurSigma: 10,
+                          tint: AppColors.glassWhite,
+                          borderColor: AppColors.glassBorder,
+                          padding: const EdgeInsets.all(8),
+                          onTap: () => Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleGudang))),
+                          child: const Icon(Icons.campaign, color: AppColors.roleGudang, size: 20),
                         ),
                       ],
                     ),
@@ -313,6 +327,12 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
             }),
             _quickMenuChip(Icons.swap_vert, 'Ambil/Kembali Barang', () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const StockFormScreen()));
+            }),
+            _quickMenuChip(Icons.local_shipping, 'Terima Barang Supplier', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const GudangReceiveScreen()));
+            }),
+            _quickMenuChip(Icons.assignment_return, 'Pengembalian Item', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const GudangItemReturnScreen()));
             }),
             _quickMenuChip(Icons.build, 'Maintenance Kendaraan', () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleMaintenanceScreen()));

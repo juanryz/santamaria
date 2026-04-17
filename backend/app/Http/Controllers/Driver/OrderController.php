@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Services\NotificationService;
 use App\Services\OrderStateMachine;
+use App\Services\OrderStatusSyncService;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
@@ -87,6 +88,9 @@ class OrderController extends Controller
             $request->user()->id,
             $request->input('notes', "Driver update: {$toStatus}")
         );
+
+        // Send consumer-facing notification with label from order_status_labels
+        OrderStatusSyncService::notifyConsumerOfStatus($order->fresh(), $toStatus);
 
         return response()->json([
             'success' => true,

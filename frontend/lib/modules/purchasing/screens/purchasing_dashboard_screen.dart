@@ -7,6 +7,7 @@ import '../../../providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'payment_verify_screen.dart';
+import 'purchasing_wage_approval_screen.dart';
 import '../../wage/screens/wage_management_screen.dart';
 
 class PurchasingDashboardScreen extends StatefulWidget {
@@ -124,7 +125,7 @@ class _PurchasingDashboardScreenState extends State<PurchasingDashboardScreen> {
     final menus = [
       {'icon': Icons.payment, 'label': 'Verifikasi Payment', 'color': Colors.orange, 'screen': const PaymentVerifyScreen()},
       {'icon': Icons.shopping_cart, 'label': 'Approval Pengadaan', 'color': Colors.blue, 'screen': null},
-      {'icon': Icons.people, 'label': 'Upah Tim Lapangan', 'color': Colors.green, 'screen': null},
+      {'icon': Icons.people, 'label': 'Upah Tim Lapangan', 'color': Colors.green, 'screen': const PurchasingWageApprovalScreen()},
       {'icon': Icons.account_balance_wallet, 'label': 'Kelola Upah Layanan', 'color': const Color(0xFF3A5E8C), 'screen': const WageManagementScreen()},
       {'icon': Icons.store, 'label': 'Bayar Supplier', 'color': Colors.purple, 'screen': null},
       {'icon': Icons.receipt_long, 'label': 'Laporan Tagihan', 'color': Colors.teal, 'screen': null},

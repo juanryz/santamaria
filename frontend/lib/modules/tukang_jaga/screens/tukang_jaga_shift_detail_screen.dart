@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/geo_photo_service.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
 
@@ -75,8 +77,31 @@ class _TukangJagaShiftDetailScreenState
   Future<void> _checkIn() async {
     setState(() => _isActing = true);
     try {
-      final res = await _api.dio
-          .post('/tukang-jaga/shifts/${widget.shiftId}/checkin');
+      // Capture selfie photo before check-in
+      final geoPhoto = await GeoPhotoService.instance.captureSelfie();
+      if (geoPhoto == null) {
+        if (mounted) _snack('Foto selfie wajib untuk check-in');
+        return;
+      }
+
+      // Upload evidence
+      await GeoPhotoService.instance.uploadEvidence(
+        geoPhoto: geoPhoto,
+        context: 'tukang_jaga_checkin',
+        referenceType: 'tukang_jaga_shift',
+        referenceId: widget.shiftId,
+        orderId: _shift?['order_id']?.toString(),
+      );
+
+      final formData = FormData.fromMap({
+        'selfie_photo': await geoPhoto.toMultipart(fieldName: 'selfie_photo'),
+        ...geoPhoto.toMetadata(),
+      });
+
+      final res = await _api.dio.post(
+        '/tukang-jaga/shifts/${widget.shiftId}/checkin',
+        data: formData,
+      );
       if (!mounted) return;
       if (res.data['success'] == true) {
         _snack('Check-in berhasil!');
@@ -94,8 +119,31 @@ class _TukangJagaShiftDetailScreenState
   Future<void> _checkOut() async {
     setState(() => _isActing = true);
     try {
-      final res = await _api.dio
-          .post('/tukang-jaga/shifts/${widget.shiftId}/checkout');
+      // Capture selfie photo before checkout / shift switch
+      final geoPhoto = await GeoPhotoService.instance.captureSelfie();
+      if (geoPhoto == null) {
+        if (mounted) _snack('Foto selfie wajib untuk checkout');
+        return;
+      }
+
+      // Upload evidence
+      await GeoPhotoService.instance.uploadEvidence(
+        geoPhoto: geoPhoto,
+        context: 'tukang_jaga_shift_switch',
+        referenceType: 'tukang_jaga_shift',
+        referenceId: widget.shiftId,
+        orderId: _shift?['order_id']?.toString(),
+      );
+
+      final formData = FormData.fromMap({
+        'selfie_photo': await geoPhoto.toMultipart(fieldName: 'selfie_photo'),
+        ...geoPhoto.toMetadata(),
+      });
+
+      final res = await _api.dio.post(
+        '/tukang-jaga/shifts/${widget.shiftId}/checkout',
+        data: formData,
+      );
       if (!mounted) return;
       if (res.data['success'] == true) {
         final data = res.data['data'] as Map<String, dynamic>?;

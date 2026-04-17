@@ -129,9 +129,46 @@ class _TukangFotoDashboardScreenState extends State<TukangFotoDashboardScreen> {
     );
   }
 
+  String _uploadLabel(dynamic a) {
+    final hasGallery = (a['gallery_count'] ?? 0) > 0 || a['has_upload'] == true;
+    final status = a['status'] ?? 'pending';
+    if (status == 'completed' && hasGallery) return 'Sudah Upload';
+    if (status == 'completed' && !hasGallery) return 'Terlambat';
+    if (hasGallery) return 'Sudah Upload';
+    return 'Belum Upload';
+  }
+
+  Color _uploadColor(dynamic a) {
+    final label = _uploadLabel(a);
+    if (label == 'Sudah Upload') return Colors.green;
+    if (label == 'Terlambat') return AppColors.statusDanger;
+    return Colors.orange;
+  }
+
+  Widget _deadlineWidget(dynamic a) {
+    final scheduledAt = a['order']?['scheduled_at'] ?? a['scheduled_date'];
+    if (scheduledAt == null) return const SizedBox.shrink();
+    try {
+      final deadline = DateTime.parse(scheduledAt).add(const Duration(hours: 2));
+      final now = DateTime.now();
+      if (now.isAfter(deadline)) return const SizedBox.shrink();
+      final diff = deadline.difference(now);
+      final hours = diff.inHours;
+      final minutes = diff.inMinutes % 60;
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'Sisa ${hours}j ${minutes}m untuk upload',
+          style: TextStyle(fontSize: 12, color: hours < 1 ? AppColors.statusDanger : Colors.grey, fontWeight: hours < 1 ? FontWeight.w600 : FontWeight.normal),
+        ),
+      );
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+  }
+
   Widget _buildAssignmentCard(dynamic a) {
     final order = a['order'] ?? {};
-    final status = a['status'] ?? 'pending';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -145,13 +182,14 @@ class _TukangFotoDashboardScreenState extends State<TukangFotoDashboardScreen> {
               Row(
                 children: [
                   Expanded(child: Text(order['order_number'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold))),
-                  GlassStatusBadge(label: status, color: status == 'confirmed' ? Colors.green : Colors.orange),
+                  GlassStatusBadge(label: _uploadLabel(a), color: _uploadColor(a)),
                 ],
               ),
               const SizedBox(height: 8),
               if (order['deceased_name'] != null) Text('Almarhum: ${order['deceased_name']}', style: const TextStyle(fontSize: 13)),
               if (order['destination_address'] != null) Text('Lokasi: ${order['destination_address']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
               if (order['scheduled_at'] != null) Text('Jadwal: ${order['scheduled_at']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              _deadlineWidget(a),
               const SizedBox(height: 12),
               Row(
                 children: [

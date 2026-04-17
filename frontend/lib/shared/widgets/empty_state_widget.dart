@@ -8,6 +8,10 @@ class EmptyStateWidget extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? action;
+  /// Convenience: if [actionLabel] and [onAction] are provided (and [action] is null),
+  /// a default FilledButton is rendered.
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   const EmptyStateWidget({
     super.key,
@@ -15,6 +19,8 @@ class EmptyStateWidget extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.action,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
@@ -42,6 +48,14 @@ class EmptyStateWidget extends StatelessWidget {
             if (action != null) ...[
               const SizedBox(height: 20),
               action!,
+            ] else if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.add),
+                label: Text(actionLabel!),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.brandPrimary),
+              ),
             ],
           ],
         ),

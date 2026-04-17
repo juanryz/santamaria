@@ -21,8 +21,14 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
   Map<String, List<dynamic>> _rankings = {};
   String? _selectedPeriodId;
 
-  final _roles = ['service_officer', 'gudang', 'purchasing', 'driver'];
-  final _roleLabels = {'service_officer': 'SO', 'gudang': 'Gudang', 'purchasing': 'Purchasing', 'driver': 'Driver'};
+  String? _filterRole;
+  final _roles = ['service_officer', 'gudang', 'purchasing', 'driver', 'dekor', 'konsumsi', 'pemuka_agama', 'tukang_foto', 'hrd', 'security'];
+  final _roleLabels = {
+    'service_officer': 'SO', 'gudang': 'Gudang', 'purchasing': 'Purchasing',
+    'driver': 'Driver', 'dekor': 'Dekor', 'konsumsi': 'Konsumsi',
+    'pemuka_agama': 'Pemuka Agama', 'tukang_foto': 'Tukang Foto',
+    'hrd': 'HRD', 'security': 'Security',
+  };
 
   @override
   void initState() {
@@ -139,8 +145,110 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
     );
   }
 
+  void _showKpiDetail(Map<String, dynamic> summary) async {
+    final userId = summary['user']?['id'] ?? summary['user_id'];
+    if (userId == null) return;
+    List<dynamic> details = [];
+    try {
+      final res = await _api.dio.get('/hrd/kpi/scores/user/$userId', queryParameters: {
+        if (_selectedPeriodId != null) 'period_id': _selectedPeriodId,
+      });
+      if (res.data['success'] == true) {
+        details = List<dynamic>.from(res.data['data'] ?? []);
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    final grade = summary['grade'] ?? '-';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: ListView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.all(20),
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 16),
+              Row(children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: _gradeColor(grade).withValues(alpha: 0.15),
+                  child: Text(grade, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _gradeColor(grade))),
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(summary['user']?['name'] ?? '-', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('${summary['user']?['role'] ?? '-'} — Skor: ${summary['total_score'] ?? '-'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                ])),
+              ]),
+              const Divider(height: 32),
+              if (details.isEmpty)
+                const Text('Tidak ada detail metrik', style: TextStyle(color: Colors.grey))
+              else
+                ...details.map((d) {
+                  final score = (d['score'] as num?)?.toDouble() ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: GlassWidget(
+                      borderRadius: 12,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(d['metric_name'] ?? d['metric']?['metric_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            _metricChip('Target', '${d['target_value']}'),
+                            const SizedBox(width: 8),
+                            _metricChip('Aktual', '${d['actual_value']}'),
+                            const SizedBox(width: 8),
+                            _metricChip('Skor', '${d['score']}', color: score >= 75 ? Colors.green : score >= 50 ? Colors.orange : Colors.red),
+                            const SizedBox(width: 8),
+                            _metricChip('Bobot', '${d['weight']}%'),
+                          ]),
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(
+                            value: (score / 100).clamp(0, 1),
+                            backgroundColor: Colors.grey.shade200,
+                            color: score >= 75 ? Colors.green : score >= 50 ? Colors.orange : Colors.red,
+                            minHeight: 4,
+                          ),
+                        ]),
+                      ),
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metricChip(String label, String value, {Color? color}) {
+    return Expanded(
+      child: Column(children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color ?? AppColors.textPrimary)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ]),
+    );
+  }
+
   Widget _buildRankingsTab() {
     if (_periods.isEmpty) return const Center(child: Text('Belum ada periode'));
+
+    final roleOptions = <String?>[null, ..._roles];
+    final filteredRankings = _filterRole == null
+        ? _rankings
+        : Map.fromEntries(_rankings.entries.where((e) => e.key.toLowerCase().contains(_filterRole!)));
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -154,8 +262,16 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
             _loadRankings();
           },
         ),
+        const SizedBox(height: 8),
+        DropdownButton<String?>(
+          value: _filterRole,
+          isExpanded: true,
+          hint: const Text('Filter: Semua Role'),
+          items: roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r == null ? 'Semua Role' : (_roleLabels[r] ?? r)))).toList(),
+          onChanged: (v) => setState(() => _filterRole = v),
+        ),
         const SizedBox(height: 16),
-        ..._rankings.entries.map((entry) {
+        ...filteredRankings.entries.map((entry) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -170,6 +286,7 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GlassWidget(
                     borderRadius: 12,
+                    onTap: () => _showKpiDetail(s),
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: _gradeColor(grade).withValues(alpha: 0.15),

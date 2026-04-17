@@ -5,12 +5,14 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/geo_photo_service.dart';
 import '../../../data/repositories/driver_repository.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'driver_trip_log_screen.dart';
 import '../../attendance/screens/clock_in_screen.dart';
+import '../../../shared/screens/employee_command_screen.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -139,7 +141,33 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     } catch (_) {}
   }
 
+  /// Statuses that require a geo-tagged photo before proceeding.
+  static const _photoRequiredStatuses = {
+    'on_the_way',
+    'arrived_pickup',
+    'arrived_destination',
+  };
+
   Future<void> _updateStatus(String orderId, String status) async {
+    // Require photo evidence for departure / arrival statuses
+    if (_photoRequiredStatuses.contains(status)) {
+      final geoPhoto = await GeoPhotoService.instance.capture();
+      if (geoPhoto == null) {
+        _snack('Foto bukti wajib diambil sebelum update status.');
+        return;
+      }
+      // Upload evidence first
+      final uploaded = await GeoPhotoService.instance.uploadEvidence(
+        geoPhoto: geoPhoto,
+        context: 'driver_$status',
+        orderId: orderId,
+      );
+      if (uploaded == null) {
+        _snack('Gagal mengunggah foto bukti. Coba lagi.');
+        return;
+      }
+    }
+
     try {
       final res = await _repo.updateStatus(orderId, status);
       if (!mounted) return;
@@ -299,6 +327,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
               ),
             ),
             const Spacer(),
+            GlassWidget(
+              borderRadius: 50,
+              blurSigma: 20,
+              tint: AppColors.glassWhite,
+              borderColor: AppColors.glassBorder,
+              padding: const EdgeInsets.all(8),
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleDriver))),
+              child: const Icon(Icons.campaign, color: AppColors.roleDriver, size: 20),
+            ),
+            const SizedBox(width: 8),
             GlassWidget(
               borderRadius: 50,
               blurSigma: 20,

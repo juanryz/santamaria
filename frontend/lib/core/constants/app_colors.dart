@@ -32,6 +32,7 @@ class AppColors {
   static const Color rolePurchasing = Color(0xFF3D6DAE); // biru tua cerah — Purchasing
   static const Color roleTukangFoto = Color(0xFF5584B8); // biru medium — Tukang Foto
   static const Color roleViewer     = Color(0xFFB0C4D8); // biru abu — Viewer (read-only)
+  static const Color roleSecurity   = Color(0xFF636E72); // abu — Security
   static const Color rolePemukaAgama = Color(0xFF4A6FA5); // biru medium — Pemuka Agama
 
   // ── Status Colors ────────────────────────────────────────
@@ -74,6 +75,7 @@ class AppColors {
     'hrd'             => roleHrd,
     'tukang_foto'     => roleTukangFoto,
     'viewer'          => roleViewer,
+    'security'        => roleSecurity,
     _                 => brandPrimary,
   };
 }

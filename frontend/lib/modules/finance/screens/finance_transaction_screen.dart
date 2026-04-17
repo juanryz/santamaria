@@ -94,13 +94,16 @@ class _FinanceTransactionScreenState extends State<FinanceTransactionScreen> {
 
     try {
       final params = <String, dynamic>{'page': _page, 'per_page': 20};
-      if (_filterFrom != null)
+      if (_filterFrom != null) {
         params['from'] = DateFormat('yyyy-MM-dd').format(_filterFrom!);
-      if (_filterTo != null)
+      }
+      if (_filterTo != null) {
         params['to'] = DateFormat('yyyy-MM-dd').format(_filterTo!);
+      }
       if (_filterDirection != null) params['direction'] = _filterDirection;
-      if (_searchCtrl.text.trim().isNotEmpty)
+      if (_searchCtrl.text.trim().isNotEmpty) {
         params['search'] = _searchCtrl.text.trim();
+      }
 
       final res = await _apiClient.dio.get(
         '/finance/transactions',

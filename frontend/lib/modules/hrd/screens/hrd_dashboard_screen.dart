@@ -12,6 +12,10 @@ import 'hrd_threshold_screen.dart';
 import 'kpi_management_screen.dart';
 import 'hrd_attendance_dashboard_screen.dart';
 import 'hrd_shift_management_screen.dart';
+import 'hrd_employee_list_screen.dart';
+import '../../../shared/screens/employee_command_screen.dart';
+import 'hrd_payroll_screen.dart';
+import 'hrd_salary_config_screen.dart';
 
 class HrdDashboardScreen extends StatefulWidget {
   const HrdDashboardScreen({super.key});
@@ -121,11 +125,15 @@ class _HrdDashboardScreenState extends State<HrdDashboardScreen> {
 
   Widget _buildMenuList() {
     final menus = [
+      {'icon': Icons.campaign, 'label': 'Perintah dari Owner', 'screen': const EmployeeCommandScreen(roleColor: AppColors.roleHrd)},
+      {'icon': Icons.badge_outlined, 'label': 'Manajemen Karyawan', 'screen': const HrdEmployeeListScreen()},
       {'icon': Icons.warning_amber, 'label': 'Daftar Pelanggaran', 'screen': const HrdViolationListScreen()},
       {'icon': Icons.tune, 'label': 'Pengaturan Threshold', 'screen': const HrdThresholdScreen()},
       {'icon': Icons.people, 'label': 'Presensi Karyawan', 'screen': const HrdAttendanceDashboardScreen()},
       {'icon': Icons.bar_chart, 'label': 'KPI Karyawan', 'screen': const KpiManagementScreen()},
       {'icon': Icons.schedule, 'label': 'Shift & Lokasi', 'screen': const HrdShiftManagementScreen()},
+      {'icon': Icons.payments, 'label': 'Payroll', 'screen': const HrdPayrollScreen()},
+      {'icon': Icons.monetization_on, 'label': 'Konfigurasi Gaji', 'screen': const HrdSalaryConfigScreen()},
     ];
 
     return Column(

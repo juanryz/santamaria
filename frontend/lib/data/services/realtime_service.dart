@@ -126,6 +126,27 @@ class RealTimeService {
     );
   }
 
+  /// Subscribe ke channel pribadi user — menerima perintah langsung dari owner.
+  /// [onCommand] dipanggil saat event 'owner.command' masuk.
+  Future<void> subscribeToUserChannel(
+    String userId,
+    Function(Map<String, dynamic> data) onCommand,
+  ) async {
+    if (AppConfig.pusherKey.isEmpty) return;
+
+    await _pusher.subscribe(
+      channelName: 'user.$userId',
+      onEvent: (event) {
+        if (event.eventName == 'owner.command') {
+          try {
+            final data = jsonDecode(event.data) as Map<String, dynamic>;
+            onCommand(data);
+          } catch (_) {}
+        }
+      },
+    );
+  }
+
   void unsubscribe(String channelName) {
     _pusher.unsubscribe(channelName: channelName);
   }

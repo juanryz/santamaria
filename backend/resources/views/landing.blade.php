@@ -535,7 +535,7 @@
       <h1>Mendampingi dengan <em>Penuh Hormat</em> di Saat Tersulit</h1>
       <p>Santa Maria Funeral Organizer menangani seluruh koordinasi pemakaman secara profesional dan terpadu — transportasi jenazah, dekorasi, konsumsi, hingga upacara keagamaan. Biarkan kami meringankan beban Anda.</p>
       <div class="hero-buttons">
-        <a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="btn-gold">
+        <a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="btn-gold">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
           Hubungi Sekarang
         </a>
@@ -766,7 +766,7 @@
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Koordinasi pemakaman</li>
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Monitoring via aplikasi</li>
         </ul>
-        <a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Dasar." class="btn-navy-outline">Konsultasi Paket Ini</a>
+        <a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Dasar." class="btn-navy-outline">Konsultasi Paket Ini</a>
       </div>
       <div class="package-card featured">
         <div class="package-name">Paket Premium</div>
@@ -779,7 +779,7 @@
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Bunga papan & karangan</li>
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Tim koordinator lapangan</li>
         </ul>
-        <a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Premium." class="btn-navy">Konsultasi Paket Ini</a>
+        <a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Premium." class="btn-navy">Konsultasi Paket Ini</a>
       </div>
       <div class="package-card">
         <div class="package-name">Paket Eksklusif</div>
@@ -792,7 +792,7 @@
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Videografi upacara</li>
           <li><svg class="check-icon" viewBox="0 0 20 20" fill="var(--steel-blue)"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> Koordinator pribadi keluarga</li>
         </ul>
-        <a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Eksklusif." class="btn-navy-outline">Konsultasi Paket Ini</a>
+        <a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20informasi%20Paket%20Eksklusif." class="btn-navy-outline">Konsultasi Paket Ini</a>
       </div>
     </div>
   </div>
@@ -862,7 +862,7 @@
     <div class="faq-list" style="text-align:left;">
       <div class="faq-item">
         <button class="faq-question">Apakah layanan tersedia 24 jam? <span class="icon">+</span></button>
-        <div class="faq-answer"><p>Ya, Santa Maria beroperasi 24/7 termasuk hari libur dan hari besar. Tim Service Officer kami siap menerima pesanan dan memberikan konsultasi kapan saja Anda membutuhkan. Hubungi kami di 024-3560444 atau WA 081.128.8286.</p></div>
+        <div class="faq-answer"><p>Ya, Santa Maria beroperasi 24/7 termasuk hari libur dan hari besar. Tim Service Officer kami siap menerima pesanan dan memberikan konsultasi kapan saja Anda membutuhkan. Hubungi kami di 024-3560444 atau WA 0811-271-4440.</p></div>
       </div>
       <div class="faq-item">
         <button class="faq-question">Berapa lama waktu respons setelah menghubungi? <span class="icon">+</span></button>
@@ -936,10 +936,10 @@
       </div>
       <div class="cta-phone">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-        <a href="https://wa.me/6281128288286" style="color:rgba(255,255,255,0.9);text-decoration:none;">081.128.8286 (WhatsApp)</a>
+        <a href="https://wa.me/6281127144440" style="color:rgba(255,255,255,0.9);text-decoration:none;">0811-271-4440 (WhatsApp)</a>
       </div>
     </div>
-    <a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="btn-gold" style="font-size:0.95rem;padding:16px 40px;">
+    <a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="btn-gold" style="font-size:0.95rem;padding:16px 40px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
           Chat via WhatsApp
         </a>
@@ -984,7 +984,7 @@
       <h4>Hubungi</h4>
       <ul>
         <li><a href="tel:0243560444">024-3560444</a></li>
-        <li><a href="https://wa.me/6281128288286">081.128.8286</a></li>
+        <li><a href="https://wa.me/6281127144440">0811-271-4440</a></li>
         <li><a href="mailto:info@santamaria.co.id">info@santamaria.co.id</a></li>
       </ul>
     </div>
@@ -995,7 +995,7 @@
 </footer>
 
 <!-- WhatsApp Float Button -->
-<a href="https://wa.me/6281128288286?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="wa-float" target="_blank" rel="noopener" aria-label="Chat WhatsApp">
+<a href="https://wa.me/6281127144440?text=Halo%20Santa%20Maria%2C%20saya%20ingin%20konsultasi%20layanan%20pemakaman." class="wa-float" target="_blank" rel="noopener" aria-label="Chat WhatsApp">
   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
 </a>
 

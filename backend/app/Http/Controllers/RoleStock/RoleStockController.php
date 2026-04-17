@@ -113,6 +113,12 @@ class RoleStockController extends Controller
             }
         }
 
+        // Auto-assign driver if all roles have completed their checklists
+        $order = $item->order;
+        if ($order) {
+            app(\App\Services\DriverAutoAssignService::class)->checkAndAssign($order);
+        }
+
         return response()->json(['success' => true, 'data' => $item->fresh()]);
     }
 

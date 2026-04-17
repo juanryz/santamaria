@@ -68,11 +68,12 @@ class TukangJagaDeliveryController extends Controller
         }
 
         // Alarm ke tukang jaga yang bertugas
-        app(NotificationService::class)->sendToUser(
+        NotificationService::send(
             $activeShift->assigned_to,
-            'ITEM_DELIVERED_TO_JAGA',
-            ['order_number' => $activeShift->order?->order_number, 'item_count' => count($request->items)],
-            $orderId
+            'ALARM',
+            'Barang Diantarkan',
+            "Driver mengirim " . count($request->items) . " item untuk order {$activeShift->order?->order_number}. Mohon konfirmasi penerimaan.",
+            ['order_number' => $activeShift->order?->order_number, 'delivery_id' => $delivery->id]
         );
 
         return response()->json(['success' => true, 'data' => $delivery->load('items'), 'message' => 'Pengiriman tercatat.']);

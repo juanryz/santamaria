@@ -64,11 +64,12 @@ class DeliveryController extends Controller
         // Notif ke consumer (pihak keluarga) untuk konfirmasi
         $order = $shift->order;
         if ($order?->pic_user_id) {
-            app(NotificationService::class)->sendToUser(
+            NotificationService::send(
                 $order->pic_user_id,
-                'DELIVERY_RECEIVED_BY_JAGA',
-                ['order_number' => $order->order_number, 'delivery_id' => $delivery->id],
-                $order->id
+                'HIGH',
+                'Barang Telah Diterima Tukang Jaga',
+                "Tukang jaga telah menerima perlengkapan untuk order {$order->order_number}. Mohon konfirmasi dari pihak keluarga.",
+                ['order_number' => $order->order_number, 'delivery_id' => $delivery->id]
             );
         }
 

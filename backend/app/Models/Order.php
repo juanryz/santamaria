@@ -276,6 +276,16 @@ class Order extends Model
 
     // v1.25 relationships
 
+    public function checklists()
+    {
+        return $this->hasMany(OrderChecklist::class);
+    }
+
+    public function galleryLinks()
+    {
+        return $this->hasMany(OrderGalleryLink::class);
+    }
+
     public function acceptanceLetter()
     {
         return $this->hasOne(ServiceAcceptanceLetter::class);

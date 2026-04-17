@@ -123,6 +123,8 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             // Tukang Jaga item deliveries (keluarga konfirmasi)
             Route::get('/orders/{orderId}/deliveries',              [\App\Http\Controllers\Consumer\FamilyDeliveryController::class, 'index']);
             Route::post('/orders/{orderId}/deliveries/{deliveryId}/confirm', [\App\Http\Controllers\Consumer\FamilyDeliveryController::class, 'confirm']);
+            // Invoice PDF (consumer — after order completed/paid)
+            Route::get('/orders/{id}/invoice',                      [\App\Http\Controllers\InvoiceController::class, 'generatePdf']);
         });
 
         // ── Service Officer ───────────────────────────────────────────────────
@@ -139,6 +141,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/ai/package-recommendation', [\App\Http\Controllers\AI\PackageRecommendationController::class, 'recommend']);
             // v1.10 — Walk-in order (SO kantor / SO lapangan)
             Route::post('/orders/walkin',            [\App\Http\Controllers\ServiceOfficer\WalkInController::class, 'store']);
+
+            // CRM — Prospects, Visit Logs, Daily Report
+            Route::get('/prospects',                 [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'prospectIndex']);
+            Route::post('/prospects',                [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'prospectStore']);
+            Route::put('/prospects/{id}',            [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'prospectUpdate']);
+            Route::get('/visits',                    [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'visitLogIndex']);
+            Route::post('/visits',                   [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'visitLogStore']);
+            Route::get('/daily-report',              [\App\Http\Controllers\ServiceOfficer\CrmController::class, 'dailyReport']);
         });
 
         // ── Admin ─────────────────────────────────────────────────────────────
@@ -198,6 +208,10 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
                 Route::get('/orders/{orderId}/shifts',             [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'orderShifts']);
                 Route::post('/orders/{orderId}/shifts/generate',   [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'generateShifts']);
                 Route::put('/shifts/{id}/assign',                  [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'assignShift']);
+
+                // v1.31 — Funeral Homes & Cemeteries (admin CRUD, index/show are public within auth)
+                Route::apiResource('funeral-homes', \App\Http\Controllers\Admin\FuneralHomeController::class)->except(['index', 'show']);
+                Route::apiResource('cemeteries', \App\Http\Controllers\Admin\CemeteryController::class)->except(['index', 'show']);
             });
 
         // ── Package write routes — admin only (owner excluded) ────────────────
@@ -298,6 +312,8 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/transactions',                            [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'index']);
             Route::post('/transactions/correction',                [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'correction']);
             Route::put('/transactions/{id}/void',                  [\App\Http\Controllers\Finance\FinanceTransactionController::class,   'void']);
+            // Invoice PDF per order
+            Route::get('/orders/{orderId}/invoice-pdf',            [\App\Http\Controllers\InvoiceController::class,                      'generatePdf']);
         });
 
         // ── Driver ────────────────────────────────────────────────────────────
@@ -385,6 +401,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             // v1.10 — HRD violations & thresholds
             Route::get('/hrd/violations',                 [\App\Http\Controllers\Owner\ViolationController::class,      'index']);
             Route::put('/thresholds/{key}',               [\App\Http\Controllers\Owner\ViolationController::class,      'updateThreshold']);
+            // v1.35 — Employee location tracking
+            Route::get('/employee-locations',             [\App\Http\Controllers\UserLocationController::class,         'allEmployeeLocations']);
+            Route::get('/employee-locations/{userId}/history', [\App\Http\Controllers\UserLocationController::class,    'employeeLocationHistory']);
+            // v1.36 — Owner Commands
+            Route::get('/commands',                       [\App\Http\Controllers\Owner\CommandController::class,        'index']);
+            Route::post('/commands',                      [\App\Http\Controllers\Owner\CommandController::class,        'store']);
+            Route::get('/commands/{id}',                  [\App\Http\Controllers\Owner\CommandController::class,        'show']);
+            Route::delete('/commands/{id}',               [\App\Http\Controllers\Owner\CommandController::class,        'cancel']);
         });
 
         // ── HRD ───────────────────────────────────────────────────────────────
@@ -400,6 +424,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::put('/thresholds/{key}',               [\App\Http\Controllers\HRD\ThresholdController::class,        'update']);
             // v1.14 — Attendances
             Route::get('/attendances',                    [\App\Http\Controllers\HRD\AttendanceController::class,       'index']);
+            // v1.35 — Employee management (HR bisa buat & kelola akun karyawan)
+            Route::get('/employees',                      [\App\Http\Controllers\HRD\EmployeeController::class,         'index']);
+            Route::post('/employees',                     [\App\Http\Controllers\HRD\EmployeeController::class,         'store']);
+            Route::get('/employees/{id}',                 [\App\Http\Controllers\HRD\EmployeeController::class,         'show']);
+            Route::put('/employees/{id}',                 [\App\Http\Controllers\HRD\EmployeeController::class,         'update']);
+            Route::put('/employees/{id}/reset-password',  [\App\Http\Controllers\HRD\EmployeeController::class,         'resetPassword']);
+            Route::put('/employees/{id}/deactivate',      [\App\Http\Controllers\HRD\EmployeeController::class,         'deactivate']);
+            Route::put('/employees/{id}/activate',        [\App\Http\Controllers\HRD\EmployeeController::class,         'activate']);
             // v1.16 — KPI
             Route::get('/kpi/metrics',                    [\App\Http\Controllers\KPI\KpiController::class,              'metricsIndex']);
             Route::post('/kpi/metrics',                   [\App\Http\Controllers\KPI\KpiController::class,              'metricsStore']);
@@ -409,6 +441,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/kpi/periods/{periodId}/scores',  [\App\Http\Controllers\KPI\KpiController::class,              'scores']);
             Route::get('/kpi/periods/{periodId}/summaries', [\App\Http\Controllers\KPI\KpiController::class,            'summaries']);
             Route::get('/kpi/periods/{periodId}/rankings', [\App\Http\Controllers\KPI\KpiController::class,             'rankings']);
+            // Payroll
+            Route::get('/salaries',                       [\App\Http\Controllers\HRD\PayrollController::class,          'salaryIndex']);
+            Route::post('/salaries',                      [\App\Http\Controllers\HRD\PayrollController::class,          'salaryStore']);
+            Route::put('/salaries/{id}',                  [\App\Http\Controllers\HRD\PayrollController::class,          'salaryUpdate']);
+            Route::get('/payroll',                        [\App\Http\Controllers\HRD\PayrollController::class,          'payrollIndex']);
+            Route::post('/payroll/generate',              [\App\Http\Controllers\HRD\PayrollController::class,          'payrollGenerate']);
+            Route::put('/payroll/{id}/approve',           [\App\Http\Controllers\HRD\PayrollController::class,          'payrollApprove']);
+            Route::get('/payroll/export',                 [\App\Http\Controllers\HRD\PayrollController::class,          'payrollExport']);
         });
 
         // ── v1.14 — Workshop Peti (Gudang) ───────────────────────────────────
@@ -489,6 +529,7 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/shifts/{id}',                         [\App\Http\Controllers\TukangJaga\ShiftController::class, 'show']);
             Route::post('/shifts/{id}/checkin',                [\App\Http\Controllers\TukangJaga\ShiftController::class, 'checkin']);
             Route::post('/shifts/{id}/checkout',               [\App\Http\Controllers\TukangJaga\ShiftController::class, 'checkout']);
+            Route::post('/shifts/{id}/switch',                 [\App\Http\Controllers\TukangJaga\ShiftController::class, 'switchShift']);
             Route::get('/orders/{orderId}/deliveries',         [\App\Http\Controllers\TukangJaga\DeliveryController::class, 'index']);
             Route::post('/shifts/{shiftId}/receive',           [\App\Http\Controllers\TukangJaga\DeliveryController::class, 'receive']);
         });
@@ -500,8 +541,18 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::delete('/orders/{orderId}/gallery-links/{id}', [\App\Http\Controllers\TukangFoto\GalleryLinkController::class, 'destroy']);
         });
 
-        // ── Consumer/SO can view gallery links ──────────────────────────
+        // ── Consumer: gallery links (only after payment confirmed) ──────
+        Route::get('/consumer/orders/{orderId}/gallery-links', [\App\Http\Controllers\TukangFoto\GalleryLinkController::class, 'consumerIndex']);
+        // ── SO/internal: gallery links (always visible) ──────────────────
         Route::get('/orders/{orderId}/gallery-links',         [\App\Http\Controllers\TukangFoto\GalleryLinkController::class, 'index']);
+
+        // ── Petugas Akta Kematian ────────────────────────────────────────
+        Route::prefix('petugas-akta')->group(function () {
+            Route::get('/orders',                              [\App\Http\Controllers\PetugasAkta\AktaController::class, 'index']);
+            Route::get('/orders/{orderId}',                    [\App\Http\Controllers\PetugasAkta\AktaController::class, 'show']);
+            Route::put('/orders/{orderId}/progress',           [\App\Http\Controllers\PetugasAkta\AktaController::class, 'updateProgress']);
+            Route::post('/orders/{orderId}/hand-over',         [\App\Http\Controllers\PetugasAkta\AktaController::class, 'handOver']);
+        });
 
         // ── v1.14 — Vendor/Tukang Foto Attendance ────────────────────────────
         Route::prefix('vendor')->group(function () {
@@ -626,6 +677,20 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
         // ── v1.17 — GPS tracking (any auth user can view driver location) ──
         Route::get('/driver/gps/latest/{driverId}',              [\App\Http\Controllers\Driver\GpsTrackingController::class, 'latestLocation']);
 
+        // ── v1.35 — User Location Tracking (semua karyawan, dengan consent) ─
+        Route::prefix('user/location')->group(function () {
+            Route::post('/',          [\App\Http\Controllers\UserLocationController::class, 'updateLocation']);
+            Route::post('/consent',   [\App\Http\Controllers\UserLocationController::class, 'storeConsent']);
+            Route::get('/consent',    [\App\Http\Controllers\UserLocationController::class, 'checkConsent']);
+        });
+
+        // ── v1.36 — Commands (karyawan terima & acknowledge perintah owner) ─
+        Route::prefix('commands')->group(function () {
+            Route::get('/my',              [\App\Http\Controllers\Owner\CommandController::class, 'myCommands']);
+            Route::get('/history',         [\App\Http\Controllers\Owner\CommandController::class, 'myHistory']);
+            Route::post('/{id}/acknowledge', [\App\Http\Controllers\Owner\CommandController::class, 'acknowledge']);
+        });
+
         // ── v1.17 — Daily Attendance (all internal users) ────────────────
         Route::prefix('attendance')->group(function () {
             Route::post('/clock-in',                              [\App\Http\Controllers\Attendance\DailyAttendanceController::class, 'clockIn']);
@@ -636,5 +701,15 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
 
         // ── v1.25 — Stock-aware package selection ────────────────────────
         Route::get('/packages/stock-check',                       [\App\Http\Controllers\PackageStockController::class, 'index']);
+
+        // ── v1.35 — Photo Evidences (universal foto + geofencing) ────────
+        Route::post('/photo-evidences',                           [\App\Http\Controllers\PhotoEvidenceController::class, 'store']);
+        Route::get('/photo-evidences',                            [\App\Http\Controllers\PhotoEvidenceController::class, 'index']);
+
+        // ── v1.31 — Funeral Homes & Cemeteries (public search for order form) ──
+        Route::get('/funeral-homes',          [\App\Http\Controllers\Admin\FuneralHomeController::class, 'index']);
+        Route::get('/funeral-homes/{id}',     [\App\Http\Controllers\Admin\FuneralHomeController::class, 'show']);
+        Route::get('/cemeteries',             [\App\Http\Controllers\Admin\CemeteryController::class, 'index']);
+        Route::get('/cemeteries/{id}',        [\App\Http\Controllers\Admin\CemeteryController::class, 'show']);
     });
 });

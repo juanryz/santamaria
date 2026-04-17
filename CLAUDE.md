@@ -13605,4 +13605,1506 @@ $schedule->call(fn() => FinancialReport::regenerateAll())->hourly();
 
 ---
 
+# SANTA MARIA — PATCH v1.31
+# Klarifikasi Operasional dari Owner — Koreksi Spec vs Kenyataan Lapangan
+
+---
+
+## FAKTA OPERASIONAL YANG DIKONFIRMASI OWNER
+
+### 1. LOKASI FISIK — 3 Pusat Inventaris Terpisah
+
+```
+Santa Maria BUKAN punya rumah duka. SM = jasa funeral organizer murni.
+
+3 LOKASI INVENTARIS TERPISAH (masing-masing punya stok & driver sendiri):
+  ┌─────────────┐   ┌─────────────┐   ┌──────────────┐
+  │   KANTOR    │   │   GUDANG    │   │  LAFIORE     │
+  │  (stok A)   │   │  (stok B)   │   │  (stok C)    │
+  │  driver(s)  │   │  driver(s)  │   │  driver(s)   │
+  └──────┬──────┘   └──────┬──────┘   └──────┬───────┘
+         │                 │                  │
+         └────────┬────────┘──────────────────┘
+                  ▼
+          RUMAH DUKA (milik pihak ketiga)
+                  │
+                  ▼
+             PEMAKAMAN (banyak, database per kota)
+```
+
+**KOREKSI BESAR dari spec sebelumnya:**
+- Spec lama: hanya Gudang yang punya stok. Kantor & Lafiore tidak disebut.
+- **Kenyataan:** Kantor menyimpan barang sendiri. Lafiore menyimpan barang sendiri.
+- **Dampak:** `stock_items.owner_role` (dari v1.29) WAJIB digunakan.
+  - Gudang: `owner_role = 'gudang'`
+  - Kantor: `owner_role = 'service_officer'` atau `owner_role = 'kantor'` (role baru?)
+  - Lafiore: `owner_role = 'dekor'`
+- **Saat order dikonfirmasi:** KETIGA lokasi harus konfirmasi ketersediaan masing-masing.
+  Alarm dikirim ke: Gudang, Kantor (SO), DAN Lafiore secara paralel.
+
+### 2. BARANG — Pinjam vs Keluar
+
+```
+Setiap barang yang keluar dari inventaris punya 2 sifat:
+
+PINJAMAN (returnable):
+  → Ada form keluar: siapa kirim, siapa terima, tanggal
+  → Ada form kembali: siapa kembalikan, siapa terima, tanggal, kondisi
+  → Tagihan consumer DIKURANGI jika barang dikembalikan
+  → Contoh: sound system, meja, taplak, koper misa, kardus air
+
+BARANG KELUAR (consumed):
+  → Keluar = habis, tidak kembali
+  → Dihitung penuh di tagihan
+  → Contoh: cologne, lilin, embalming fluid, kapur
+
+(Sudah ada di v1.18 sebagai 'sewa' & 'pakai_habis' & 'pakai_kembali' — SUDAH BENAR)
+```
+
+### 3. RUMAH DUKA — Bukan Milik SM
+
+```
+- Santa Maria TIDAK memiliki rumah duka
+- Rumah duka selalu milik pihak ketiga (Bethesda, Sion, dll)
+- SM datang ke rumah duka untuk melayani
+- Perlu tabel/database rumah duka yang pernah dipakai (sortir per kota)
+```
+
+### 4. PEMAKAMAN — Database Dinamis per Kota
+
+```
+- Banyak pemakaman yang dipakai
+- Perlu tabel master `cemeteries`:
+  id, name, city, address, lat, lng, contact_phone, notes, is_active
+- Saat SO input order → autocomplete dari database pemakaman
+- Pemakaman baru bisa ditambahkan saat pertama kali dipakai
+```
+
+### 5. DRIVER — Multi-Driver, Multi-Sumber, Masalah Barang Nyangkut
+
+```
+KENYATAAN:
+- Ada BANYAK driver (bukan 1 per order)
+- Gudang, Kantor, dan Lafiore masing-masing punya driver sendiri
+- Saat order: ketiga lokasi kirim barang ke rumah duka MASING-MASING
+
+ALUR DRIVER (typical):
+  1. Ambil barang di gudang/kantor/lafiore
+  2. Antar ke rumah duka → serah terima ke tukang jaga
+  3. Dari rumah duka → jemput jenazah di RS/rumah
+  4. Antar jenazah ke rumah duka
+  5. (Saat prosesi selesai) Antar jenazah ke pemakaman
+  6. Kembali ke rumah duka → ambil barang dari tukang jaga (serah terima)
+  7. Kembalikan barang ke gudang/kantor/lafiore
+
+MASALAH NYATA (butuh solusi AI):
+  Driver malas kembali ke gudang karena jauh → barang STUCK di kantor.
+  Solusi yang dibutuhkan:
+  - AI deteksi barang yang belum kembali ke lokasi asal
+  - Alert ke gudang/kantor/lafiore: "Barang order X masih di [lokasi]"
+  - AI suggest: "Driver Y sedang di dekat kantor, bisa sekalian bawa ke gudang"
+  - Tracking status barang: di gudang / di perjalanan / di rumah duka / di kantor (stuck) / kembali
+```
+
+### 6. LAFIORE — Tim Internal dengan Stok Sendiri
+
+```
+- Lafiore = divisi dekorasi internal SM (BUKAN vendor luar)
+- Digaji bulanan oleh SM
+- Punya stok bunga & dekorasi sendiri
+- Bahan baku di-request ke Purchasing → Purchasing pilih supplier
+- Punya kendaraan sendiri untuk kirim ke rumah duka
+- Saat order: Lafiore konfirmasi ketersediaan stok dekorasi sendiri
+```
+
+### 7. KONSUMSI — Dari Supplier, Bukan SM
+
+```
+- SM TIDAK menyediakan konsumsi/katering sendiri
+- Konsumsi diorder dari supplier luar
+- Purchasing yang handle pemesanan ke supplier konsumsi
+- Supplier kirim langsung ke rumah duka (bukan via driver SM)
+```
+
+### 8. TUKANG JAGA — Pekerja Lepas per Order
+
+```
+- Tukang jaga = orang LUAR, direkrut per order
+- Bukan karyawan tetap SM
+- Shift: PAGI dan MALAM (2 shift per hari)
+- Durasi: tergantung berapa hari keluarga mau di rumah duka
+- Upah: per shift, sudah ditentukan rate-nya
+- Tugas utama:
+  → Jaga rumah duka (barang SM & keluarga)
+  → Terima serah terima barang dari driver
+  → Serahkan barang kembali ke driver saat prosesi selesai
+  → Jaga keamanan & kenyamanan
+```
+
+### 9. PEMBAYARAN CONSUMER — Setelah Prosesi, Dikurangi Retur
+
+```
+- Keluarga bayar SETELAH prosesi selesai
+- Deadline: maksimal 3 hari setelah selesai
+- Total tagihan DIKURANGI barang yang dikembalikan
+  Contoh: pesan 10 kardus air, kembali 3 → bayar 7 kardus saja
+- Metode: cash atau transfer
+- Yang menagih: Purchasing/Finance
+```
+
+### 10. PURCHASING/FINANCE — Pusat Semua Pembayaran
+
+```
+Purchasing/Finance handle SEMUA transaksi keluar:
+  ├── Bayar supplier (konsumsi, bahan dekorasi, dll)
+  ├── Bayar pekerja lepas (tukang jaga, tukang angkat peti, musisi)
+  ├── Bayar request barang dari SEMUA role (termasuk Owner)
+  ├── Verifikasi pembayaran masuk dari consumer
+  └── Bayar pemuka agama
+```
+
+### 11. OWNER — Monitor Only, Intervensi saat Anomali
+
+```
+- Owner hanya monitor dashboard
+- Owner TIDAK operasional sehari-hari
+- Owner intervensi (marah/perintah) hanya saat ada anomali
+- Fitur Owner Command (v1.29) sudah tepat untuk ini
+```
+
+### 12. SECURITY — Jaga Kantor, Lapor Tamu
+
+```
+- Security hanya jaga kantor fisik
+- Tugas: awasi kantor, laporkan tamu/pihak luar yang datang
+- BUKAN jaga rumah duka (itu tugas tukang jaga)
+```
+
+### 13. HRD — Termasuk Sistem Gaji Berbasis Performa
+
+```
+BARU — BELUM ADA DI SPEC SEBELUMNYA:
+
+HRD mengelola gaji berbasis performa (performance-based pay).
+
+Formula:
+  gaji_aktual = gaji_pokok × (tasks_completed / tasks_assigned)
+
+Contoh:
+  Purchasing gaji pokok Rp 3.000.000
+  Bulan ini: 100 tugas masuk, hanya selesaikan 60
+  Gaji = Rp 3.000.000 × 60% = Rp 1.800.000
+
+Ini berarti perlu:
+  - Tabel konfigurasi gaji pokok per role/user
+  - Tracking otomatis: berapa tugas masuk, berapa yang diselesaikan
+  - Perhitungan otomatis gaji per bulan
+  - Integrasi dengan KPI (v1.16) — KPI score bisa jadi multiplier
+  - Dashboard HRD: slip gaji per karyawan per bulan
+```
+
+---
+
+## DATABASE — TABEL BARU v1.31
+
+### Tabel `funeral_homes` (Database Rumah Duka)
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+name VARCHAR(255) NOT NULL                   -- "Rumah Duka Bethesda"
+city VARCHAR(100) NOT NULL                   -- "Semarang"
+address TEXT NULLABLE
+lat DECIMAL(10,7) NULLABLE
+lng DECIMAL(10,7) NULLABLE
+contact_phone VARCHAR(30) NULLABLE
+contact_person VARCHAR(255) NULLABLE
+notes TEXT NULLABLE
+usage_count INTEGER DEFAULT 0               -- berapa kali dipakai (auto-increment)
+is_active BOOLEAN DEFAULT TRUE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+INDEX: (city), (name), (usage_count DESC)
+```
+
+### Tabel `cemeteries` (Database Pemakaman per Kota)
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+name VARCHAR(255) NOT NULL                   -- "Pemakaman Bergota"
+city VARCHAR(100) NOT NULL                   -- "Semarang"
+address TEXT NULLABLE
+lat DECIMAL(10,7) NULLABLE
+lng DECIMAL(10,7) NULLABLE
+cemetery_type ENUM('umum','khusus_agama','krematorium','taman_makam') DEFAULT 'umum'
+contact_phone VARCHAR(30) NULLABLE
+notes TEXT NULLABLE
+usage_count INTEGER DEFAULT 0
+is_active BOOLEAN DEFAULT TRUE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+INDEX: (city), (name), (cemetery_type)
+```
+
+### Tabel `employee_salaries` (Gaji Pokok & Performa)
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+user_id UUID REFERENCES users(id)
+base_salary DECIMAL(15,2) NOT NULL           -- gaji pokok
+effective_date DATE NOT NULL                 -- berlaku mulai
+end_date DATE NULLABLE                       -- NULL = masih berlaku
+salary_type ENUM('fixed','performance_based') DEFAULT 'performance_based'
+-- fixed: gaji tetap (misal: owner, super_admin)
+-- performance_based: gaji × (completed/assigned)
+notes TEXT NULLABLE
+created_by UUID REFERENCES users(id)
+created_at TIMESTAMP
+updated_at TIMESTAMP
+```
+
+### Tabel `monthly_payroll` (Slip Gaji Bulanan — Auto-Generated)
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+user_id UUID REFERENCES users(id)
+period_year INTEGER NOT NULL
+period_month INTEGER NOT NULL
+base_salary DECIMAL(15,2) NOT NULL           -- snapshot gaji pokok
+tasks_assigned INTEGER DEFAULT 0             -- total tugas yang masuk
+tasks_completed INTEGER DEFAULT 0            -- total tugas yang diselesaikan
+completion_rate DECIMAL(5,2) DEFAULT 0       -- tasks_completed / tasks_assigned × 100
+kpi_score DECIMAL(5,2) NULLABLE              -- dari kpi_user_summary (opsional multiplier)
+calculated_salary DECIMAL(15,2) NOT NULL     -- base × completion_rate
+adjustments DECIMAL(15,2) DEFAULT 0          -- bonus/potongan manual
+final_salary DECIMAL(15,2) NOT NULL          -- calculated + adjustments
+adjustment_notes TEXT NULLABLE
+status ENUM('draft','reviewed','approved','paid') DEFAULT 'draft'
+reviewed_by UUID NULLABLE REFERENCES users(id)
+approved_by UUID NULLABLE REFERENCES users(id)
+paid_at TIMESTAMP NULLABLE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+UNIQUE(user_id, period_year, period_month)
+```
+
+### Tabel `item_location_tracking` (Tracking Lokasi Barang Antar Lokasi)
+
+Solusi untuk masalah "barang stuck di kantor".
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+order_id UUID REFERENCES orders(id)
+stock_item_id UUID NULLABLE REFERENCES stock_items(id)
+equipment_item_id UUID NULLABLE REFERENCES order_equipment_items(id)
+item_description VARCHAR(255) NOT NULL
+
+-- Asal & tujuan
+origin_type ENUM('gudang','kantor','lafiore','rumah_duka','pemakaman','other') NOT NULL
+origin_label VARCHAR(255) NOT NULL
+destination_type ENUM('gudang','kantor','lafiore','rumah_duka','pemakaman','other') NOT NULL
+destination_label VARCHAR(255) NOT NULL
+
+-- Status
+current_location_type ENUM('gudang','kantor','lafiore','rumah_duka','pemakaman','in_transit','other') NOT NULL
+current_location_label VARCHAR(255) NOT NULL
+status ENUM(
+  'at_origin',           -- masih di lokasi asal
+  'in_transit',          -- sedang diantar
+  'at_destination',      -- sudah tiba di tujuan
+  'returning',           -- sedang dikembalikan
+  'returned',            -- sudah kembali ke asal
+  'stuck',               -- stuck di lokasi lain (AI flag)
+  'lost'                 -- hilang
+) DEFAULT 'at_origin'
+
+-- Serah terima
+sent_by UUID NULLABLE REFERENCES users(id)
+sent_at TIMESTAMP NULLABLE
+received_by UUID NULLABLE REFERENCES users(id)
+received_at TIMESTAMP NULLABLE
+return_sent_by UUID NULLABLE REFERENCES users(id)
+return_sent_at TIMESTAMP NULLABLE
+return_received_by UUID NULLABLE REFERENCES users(id)
+return_received_at TIMESTAMP NULLABLE
+
+-- AI flag
+is_stuck BOOLEAN DEFAULT FALSE               -- AI deteksi: barang > threshold di lokasi salah
+stuck_since TIMESTAMP NULLABLE
+stuck_alert_sent BOOLEAN DEFAULT FALSE
+ai_suggestion TEXT NULLABLE                  -- "Driver Y dekat kantor, bisa sekalian bawa"
+
+notes TEXT NULLABLE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+INDEX: (order_id), (status), (is_stuck), (current_location_type)
+```
+
+---
+
+## KOREKSI ALUR ORDER — VERSI OPERASIONAL NYATA
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║  ALUR ORDER SANTA MARIA — KENYATAAN LAPANGAN v1.31                  ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+STEP 1 — ORDER MASUK (3 channel: SO lapangan, Kantor/SO, Consumer app)
+  → Status: pending
+
+STEP 1.5 — SURAT PENERIMAAN LAYANAN + TANDA TANGAN (gate)
+  → Status: awaiting_signature → signed
+
+STEP 2 — SO KONFIRMASI (pilih paket, set jadwal, assign vendor)
+  → Status: confirmed
+  → PARALEL alarm ke 3 LOKASI INVENTARIS:
+    ├── GUDANG: "Siapkan barang gudang untuk order X"
+    ├── KANTOR: "Siapkan barang kantor untuk order X"
+    └── LAFIORE: "Siapkan dekorasi untuk order X"
+  → PARALEL alarm ke vendor:
+    ├── Konsumsi supplier (via Purchasing)
+    ├── Pemuka Agama
+    └── Tukang Foto
+
+STEP 3 — TIGA LOKASI SIAPKAN BARANG (PARALEL)
+  Gudang centang checklist → "Stok Gudang Siap"
+  Kantor centang checklist → "Stok Kantor Siap"
+  Lafiore centang checklist → "Dekorasi Siap"
+  → SEMUA harus siap sebelum driver berangkat
+
+STEP 4 — DRIVER(S) KIRIM BARANG KE RUMAH DUKA
+  Bisa >1 driver dari lokasi berbeda:
+    Driver Gudang → bawa barang gudang ke rumah duka
+    Driver Kantor → bawa barang kantor ke rumah duka
+    Driver Lafiore → bawa dekorasi ke rumah duka
+  → Serah terima ke TUKANG JAGA yang sedang shift
+  → Form serah terima: pengirim, penerima, daftar barang, tanda tangan
+
+STEP 5 — DRIVER JEMPUT JENAZAH
+  Driver → RS/rumah → ambil jenazah → antar ke rumah duka
+  → Consumer notif: "Jenazah telah tiba"
+
+STEP 6 — PROSESI BERLANGSUNG (1-N hari)
+  Tukang jaga shift pagi & malam bergantian
+  Vendor (dekor, konsumsi, pemuka agama) bertugas
+  Consumer bisa request amendment (tambahan)
+
+STEP 7 — PROSESI SELESAI → PEMAKAMAN
+  Driver antar jenazah ke pemakaman
+  → Status: burial_completed
+
+STEP 8 — PENGEMBALIAN BARANG
+  Driver kembali ke rumah duka → serah terima dari tukang jaga
+  → Form serah terima: barang keluar vs kembali, kondisi
+  → Driver HARUS kembalikan ke lokasi ASAL:
+    Barang gudang → gudang
+    Barang kantor → kantor
+    Barang lafiore → lafiore
+  → AI MONITOR: jika barang tidak kembali ke asal dalam threshold:
+    → Flag 'stuck' → alert ke lokasi asal + suggest driver terdekat
+
+STEP 9 — TAGIHAN & PEMBAYARAN
+  Purchasing hitung: total paket + addon - barang yang dikembalikan
+  Consumer bayar (maks 3 hari setelah prosesi)
+  Purchasing bayar: supplier, tukang jaga, pemuka agama, pekerja lepas
+
+STEP 10 — POST-ORDER
+  Akta kematian, laporan keuangan, KPI update, gaji update
+```
+
+---
+
+## SCHEDULER BARU v1.31
+
+```php
+// Deteksi barang stuck di lokasi salah (setiap 2 jam)
+$schedule->command('items:detect-stuck')->everyTwoHours();
+
+// Generate payroll bulanan (tanggal 1 setiap bulan)
+$schedule->command('payroll:generate-monthly')->monthlyOn(1, '03:00')
+  ->timezone('Asia/Jakarta');
+
+// AI suggest driver untuk ambil barang stuck (setiap 4 jam)
+$schedule->command('items:suggest-return-driver')->everySixHours();
+```
+
+---
+
+## ATURAN BISNIS v1.31
+
+```
+1. TIGA LOKASI INVENTARIS: Gudang, Kantor, Lafiore masing-masing
+   punya stok dan driver sendiri. Saat order, KETIGA nya harus konfirmasi.
+
+2. RUMAH DUKA bukan milik SM — selalu pihak ketiga. Perlu database
+   rumah duka yang pernah dipakai (autocomplete saat input order).
+
+3. PEMAKAMAN — database per kota, bisa ditambah saat pertama kali dipakai.
+
+4. BARANG HARUS KEMBALI KE LOKASI ASAL — bukan sembarangan.
+   Barang gudang → gudang. Barang kantor → kantor. Barang lafiore → lafiore.
+   AI deteksi & alert jika barang stuck di lokasi salah.
+
+5. LAFIORE = tim internal, bukan vendor. Digaji. Punya stok sendiri.
+
+6. KONSUMSI = dari supplier luar, bukan SM. Supplier kirim langsung.
+
+7. TUKANG JAGA = pekerja lepas per order. 2 shift: pagi & malam.
+   Durasi sesuai permintaan keluarga.
+
+8. PEMBAYARAN CONSUMER = setelah prosesi, maks 3 hari.
+   Total dikurangi barang yang dikembalikan.
+
+9. GAJI KARYAWAN = berbasis performa.
+   gaji_aktual = gaji_pokok × (tasks_completed / tasks_assigned)
+
+10. SECURITY = hanya jaga kantor, lapor tamu. Bukan jaga rumah duka.
+```
+
+---
+
+# SANTA MARIA — PATCH v1.32
+# Klarifikasi Operasional Lanjutan — Peti, Driver, Supplier, Tukang Angkat Peti, Serah Terima
+
+---
+
+## FAKTA OPERASIONAL LANJUTAN (DIKONFIRMASI OWNER)
+
+### 1. PETI MATI — Hybrid: Beli Jadi ATAU Beli Kayu + Finishing di Gudang
+
+```
+Dua alur pengadaan peti:
+  A. Beli peti jadi dari supplier → langsung pakai
+  B. Beli kayu mentah dari supplier → finishing/percantik di gudang SM
+
+Kedua alur melewati Purchasing (procurement).
+Modul coffin_orders (workshop peti) di v1.14 TETAP RELEVAN untuk alur B.
+```
+
+### 2. DRIVER — Selalu Aktif, Auto-Assign Setelah Stok Clear
+
+```
+KOREKSI dari spec lama:
+- HAPUS fitur "driver aktif/tidak aktif" — driver HARUS SELALU aktif
+- Driver yang TIDAK sedang mengerjakan order → otomatis available
+- Auto-assign driver: HANYA setelah SEMUA pihak (gudang, kantor, lafiore)
+  konfirmasi stok tidak ada masalah
+- Sistem pilih driver yang sedang tidak bertugas (bukan manual SO assign)
+```
+
+### 3. TUKANG ANGKAT PETI — Pekerja Lepas + Koordinator
+
+```
+- Tukang angkat peti = pekerja lepas per order
+- Jumlah tergantung jenis/ukuran peti (dari master data peti)
+- Ada KOORDINATOR tukang angkat peti:
+  → Koordinator yang mengatur siapa yang kerja
+  → Koordinator yang MENAGIH upah ke kantor (bukan per-orang)
+  → Purchasing/Finance bayar ke koordinator (1 transaksi)
+  → Koordinator distribusi ke anak buahnya sendiri (di luar sistem)
+```
+
+### 4. SERAH TERIMA BARANG — Rantai 3 Konfirmasi
+
+```
+KIRIM:
+  Driver (gudang/kantor/lafiore) → Tukang Jaga → Consumer (via app)
+  
+  1. Driver antar barang ke rumah duka
+  2. Tukang Jaga terima + tanda tangan di app
+  3. Tukang Jaga taruh barang di rumah duka
+  4. Consumer cek di app: "Barang yang diterima sudah sesuai?" + checklist
+     → Consumer centang per item + confirm
+
+KEMBALI:
+  Tukang Jaga → Driver → Gudang/Kantor/Lafiore (masing-masing konfirmasi)
+  
+  1. Prosesi selesai
+  2. Tukang Jaga serah terima barang ke Driver + tanda tangan
+  3. Driver bawa ke lokasi ASAL masing-masing
+  4. Penerima di lokasi asal (gudang/kantor/lafiore) WAJIB konfirmasi terima
+     → Cek kondisi + qty → tanda tangan di app
+```
+
+### 5. BARANG STUCK — Detail Masalah
+
+```
+Masalah spesifik:
+  - Barang GUDANG sering nyangkut di KANTOR
+  - Alasan: gudang jauh dari rumah duka, kantor lebih dekat
+  - Driver ambil jalan pintas: antar barang gudang ke kantor dulu, bukan langsung ke gudang
+
+Solusi AI yang dibutuhkan:
+  - Deteksi: barang asal gudang tapi current_location = kantor > threshold jam
+  - Alert ke gudang: "X item dari order Y masih di kantor sejak Z jam lalu"
+  - Suggest: "Driver A sedang di area kantor, bisa sekalian bawa ke gudang"
+  - Eskalasi: jika stuck > 24 jam → alarm HRD + Owner
+```
+
+### 6. SUPPLIER — 2 Jenis
+
+```
+SUPPLIER TETAP:
+  - Terdaftar di sistem, punya akun app
+  - WAJIB install aplikasi
+  - Ikut sistem bidding e-Katalog
+  - Contoh: supplier peti, supplier bunga rutin, supplier air minum
+
+SUPPLIER SEMENTARA:
+  - Tidak terdaftar, tidak install app
+  - Untuk kebutuhan one-time / darurat
+  - Purchasing hubungi manual via WA
+  - Transaksi tetap dicatat di sistem oleh Purchasing
+
+Tambah kolom di users (supplier):
+  supplier_type ENUM('permanent','temporary') DEFAULT 'permanent'
+  -- permanent = terdaftar, app, bidding
+  -- temporary = manual, WA, dicatat Purchasing
+```
+
+### 7. BIDDING e-KATALOG — Mekanisme Harga
+
+```
+Contoh alur bidding:
+  1. Purchasing buat sayembara: "Butuh Air Minum 10 kardus, budget Rp 10.000/kardus"
+  2. Supplier A tawar: Rp 10.000
+  3. Supplier B tawar: Rp 11.500
+  4. Supplier C tawar: Rp 11.700
+  5. Yang TERMURAH dipilih (kewenangan Purchasing)
+  6. AI bantu: tampilkan harga pasaran real-time sebagai referensi
+
+CATATAN: Supplier boleh tawar DI ATAS budget (misal budget 10.000, tawar 11.500)
+  → Purchasing yang putuskan apakah masih wajar
+  → AI flag jika harga > X% di atas pasaran
+```
+
+### 8. WHATSAPP — Scope Terbatas
+
+```
+WA hanya dipakai untuk:
+  1. SO → Consumer: "Install app ini untuk track order"
+  2. Purchasing → Supplier sementara: koordinasi manual
+  
+WA BUKAN alat koordinasi internal lagi — semua via app.
+```
+
+---
+
+## ITEM YANG BELUM DIKONFIRMASI (PENDING OWNER)
+
+```
+⏳ Detail paket layanan (nama, harga, isi per lokasi) — OWNER AKAN KASIH
+⏳ Detail add-on yang tersedia — OWNER AKAN KASIH
+⏳ Barang apa saja di Kantor vs Gudang — OWNER AKAN KONFIRMASI
+⏳ Detail barang Lafiore — OWNER AKAN KONFIRMASI
+⏳ Siapa yang assign driver dari mana — OWNER AKAN KONFIRMASI
+   (sementara: sistem otomatis, setelah semua stok clear)
+
+🔔 REMINDER: Setiap kali membahas PAKET LAYANAN, tanyakan ulang ke owner
+   apakah detail paket sudah siap dikonfirmasi.
+```
+
+---
+
+# SANTA MARIA — PATCH v1.33
+# Klarifikasi Operasional Lanjutan 2 — Prosesi, Kendaraan, Keuangan, Consumer
+
+---
+
+## FAKTA OPERASIONAL LANJUTAN 2 (DIKONFIRMASI OWNER)
+
+### 1. SO = Komandan Lapangan
+
+```
+- SO HADIR FISIK di rumah duka saat pelaksanaan prosesi
+- SO = komandan lapangan, mengkoordinasi semua pihak di lokasi
+- SO adalah orang internal SM
+```
+
+### 2. Pemuka Agama — Selalu 1, Selalu dari Keagamaan
+
+```
+- 1 pemuka agama per order
+- Bukan dari SM — dari lembaga keagamaan
+- SM yang assign (internal DB) atau consumer yang request (external vendor v1.24)
+```
+
+### 3. Tukang Foto — Sistem Upah, Upload Google Drive Link
+
+```
+ALUR TUKANG FOTO:
+  1. Tukang foto = pekerja lepas sistem upah (bukan karyawan tetap)
+  2. Ambil order → dokumentasi foto/video di rumah duka
+  3. Setelah selesai → upload ke Google Drive
+  4. Di app: tautkan link Google Drive ke order
+  5. Setelah link ditautkan → pekerjaan dianggap SELESAI
+  6. Upah dihitung setelah melewati waktu prosesi + link sudah di-submit
+
+Consumer bisa akses link Google Drive SETELAH pembayaran lunas.
+```
+
+### 4. Kendaraan — Fully Dynamic, Admin Input Manual
+
+```
+KOREKSI dari spec lama:
+- TIDAK ada asumsi fixed jumlah kendaraan
+- Semua kendaraan di-input manual oleh Admin/Super Admin
+- Setiap kendaraan punya atribut:
+  → Milik unit mana: gudang / kantor / lafiore
+  → Tipe: mobil jenazah / van / pickup / bus / dll
+  → Peruntukan paket: "Khusus Paket Premium" atau "Semua paket"
+  → Status: available / in_use / maintenance
+- FALLBACK: jika mobil jenazah paket A habis → otomatis alihkan ke mobil paket B
+- Sistem harus DINAMIS — jangan hardcode jumlah atau tipe
+```
+
+### 5. Tukang Jaga — Switch Shift Wajib Konfirmasi
+
+```
+KOREKSI/TAMBAHAN:
+- Tukang jaga lapor langsung ke APP (bukan ke SO/koordinator)
+- Saat mau off shift: WAJIB switch dengan tukang jaga shift berikutnya
+- Ada KONFIRMASI antar tukang jaga saat peralihan shift:
+  → Tukang jaga shift 1: "Saya serah terima ke [nama]" → tandatangan
+  → Tukang jaga shift 2: "Saya terima shift dari [nama]" → tandatangan
+  → Baru shift 1 bisa checkout
+- Tukang jaga HARUS datang — tidak ada mekanisme cadangan
+- Makan/minum dari SM: opsional (diatur per order oleh SO)
+```
+
+### 6. Tagihan Consumer — Invoice PDF + In-App
+
+```
+- Invoice PDF bisa di-download oleh consumer
+- Invoice juga bisa dilihat langsung di app (in-app view)
+- Tidak ada DP/uang muka — FULL bayar setelah prosesi selesai
+- Deadline bayar: 3 hari (SOP keterlambatan belum ditentukan → ⏳ PENDING)
+- Gaji karyawan: setiap tanggal 10 per bulan
+```
+
+### 7. Consumer Access — Gated by Payment
+
+```
+SEBELUM BAYAR:
+  ✓ Track order real-time
+  ✓ Lihat status prosesi
+  ✓ Konfirmasi barang diterima
+  ✓ Request amendment
+  ✓ Lihat invoice / tagihan
+
+SETELAH BAYAR (LUNAS):
+  ✓ Semua di atas
+  ✓ Download foto dokumentasi (link Google Drive)
+  ✓ Download berkas akta kematian
+  ✓ Akses semua dokumen terkait
+
+BELUM LUNAS → TIDAK bisa akses foto & dokumen → motivasi bayar cepat
+```
+
+### 8. Rating — App Store + Google Maps
+
+```
+- Rating di dalam app SM: TIDAK ADA
+- Consumer diarahkan ke:
+  → Rating di Google Play Store / App Store
+  → Rating di Google Maps (lokasi kantor SM)
+- Bisa tampilkan prompt/link setelah order selesai + lunas
+```
+
+### 9. Order — Tidak Ada Pembatalan
+
+```
+- TIDAK ADA pembatalan order
+- Sekali order dibuat dan dikonfirmasi → harus jalan sampai selesai
+- Tidak perlu fitur cancel/refund
+- Status 'cancelled' di ENUM bisa dihapus atau reserved untuk kasus luar biasa
+```
+
+### 10. Multi-Order — Dinamis, Fallback Kendaraan
+
+```
+- Banyak order bisa jalan bersamaan (rumah duka banyak)
+- Resource dibagi dinamis: driver, kendaraan, tukang jaga, dekorasi
+- Kendaraan: jika paket A habis → fallback ke paket B
+- Sistem harus pintar alokasi resource tanpa manual intervention
+```
+
+### 11. Kremasi & Pemakaman — DI LUAR Tanggung Jawab SM
+
+```
+KOREKSI BESAR:
+- Biaya kremasi / pemakaman BUKAN ditanggung SM
+- Keluarga bayar LANGSUNG ke tempat kremasi / pemakaman
+- SM hanya antar jenazah ke lokasi, SELESAI
+- Tagihan SM TIDAK termasuk biaya kremasi/pemakaman
+- Di app: info lokasi kremasi/pemakaman hanya sebagai referensi
+```
+
+### 12. Jenazah Luar Kota — Alur Berbeda (PENDING)
+
+```
+⏳ Alur jenazah dari luar kota belum didiskusikan
+🔔 REMINDER: Tanyakan ke owner saat membahas fitur terkait transport jarak jauh
+```
+
+---
+
+## ITEM PENDING KUMULATIF (BELUM DIKONFIRMASI OWNER)
+
+```
+⏳ Detail paket layanan (nama, harga, isi per lokasi)
+⏳ Detail add-on yang tersedia
+⏳ Barang apa saja di Kantor vs Gudang vs Lafiore
+⏳ Detail mekanisme assign driver (sementara: auto setelah stok clear)
+⏳ SOP keterlambatan bayar consumer (denda? eskalasi?)
+⏳ Alur jenazah luar kota
+⏳ Jadwal kegiatan per hari di rumah duka (misa, doa malam, dll)
+
+🔔 REMINDER AKTIF:
+  - Setiap bahas PAKET LAYANAN → tanyakan owner konfirmasi
+  - Setiap bahas TRANSPORT LUAR KOTA → tanyakan owner diskusi
+  - Setiap bahas JADWAL PROSESI → tanyakan owner apakah perlu di-track
+```
+
+---
+
+# SANTA MARIA — PATCH v1.34
+# Klarifikasi Operasional Lanjutan 3 — Skala, Alarm, Role Detail, Tukang Foto
+
+---
+
+## SKALA OPERASI — DIKONFIRMASI
+
+```
+╔═══════════════════════════════════════════════════════════════╗
+║  SKALA SANTA MARIA                                            ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Order per bulan     : 800+ (±27 order per hari)              ║
+║  Total karyawan      : 40+                                    ║
+║  Supplier tetap      : dinamis (diatur per role)              ║
+║  Jam kerja kantor    : 08:00 - 17:00 WIB                     ║
+║  Layanan             : 24 JAM (termasuk alarm)                ║
+║  Device              : HP disediakan kantor (bukan pribadi)   ║
+║  Internet            : flexible (perlu offline mode?)         ║
+╚═══════════════════════════════════════════════════════════════╝
+
+IMPLIKASI ARSITEKTUR:
+  - 800 order/bulan = HIGH VOLUME → perlu optimasi query, caching, queue
+  - 27 order/hari = kemungkinan besar 5-10 order BERSAMAAN
+  - 40+ karyawan = semua pakai app setiap hari
+  - HP kantor = bisa pre-install app, pre-configure
+  - Perlu: pagination, lazy loading, efficient real-time updates
+```
+
+## FAKTA OPERASIONAL LANJUTAN 3
+
+### 1. SO — Tugas Harian Lengkap
+
+```
+SO bukan hanya handle order. Tugas harian SO:
+  ├── Handle order baru (input, konfirmasi, koordinasi)
+  ├── Follow up consumer LAMA (post-order, relasi)
+  ├── Prospek keluarga baru (sales/marketing)
+  ├── Laporan harian ke owner/kantor
+  ├── Input order (dari WA/telepon/walk-in)
+  ├── Target visit (kunjungan ke rumah duka, RS, gereja)
+  └── Komandan lapangan saat prosesi
+
+Perlu fitur di app SO:
+  - CRM sederhana: daftar prospek, follow-up reminder
+  - Log visit: tanggal, lokasi, catatan
+  - Laporan harian: auto-generate dari aktivitas hari itu
+  - Target tracking: berapa visit/order per bulan vs target
+```
+
+### 2. Gudang — Tugas Harian
+
+```
+  ├── Siapkan barang per order (utama)
+  ├── Bersih-bersih area gudang
+  └── Cek stok barang (rutinitas)
+```
+
+### 3. Tukang Foto — Many-to-One, Google Drive Pribadi
+
+```
+- Bisa BANYAK tukang foto per 1 order (many to 1)
+- Masing-masing upload ke Google Drive PRIBADI mereka
+- Tautkan link di app per order
+- Deadline upload: 3 JAM setelah prosesi selesai
+- Setelah link ditautkan + waktu prosesi lewat → upah dihitung
+- Jika lewat 3 jam belum upload → alarm HRD? (⏳ belum dikonfirmasi)
+
+Perlu di app:
+  - Input field: "Link Google Drive" per tukang foto per order
+  - Validasi: link harus format Google Drive URL
+  - Timer: countdown 3 jam setelah prosesi selesai
+  - Status: belum_upload / sudah_upload / terlambat
+```
+
+### 4. Tukang Angkat Peti — Detail
+
+```
+- Pekerja lepas, ada di rumah duka (flexible kapan)
+- Koordinator: bisa ikut angkat atau hanya koordinasi (flexible)
+- Upah: Rp 75.000/hari/orang (LUMP SUM ke koordinator)
+- Upah role lain: DINAMIS — bisa diatur di system config
+- Koordinator yang tagih ke kantor (Purchasing bayar)
+
+Tabel upah pekerja lepas harus DINAMIS:
+  - Per role: tukang_angkat_peti, tukang_jaga, tukang_foto, musisi, dll
+  - Per unit: per hari, per shift, per order, per jam
+  - Bisa diubah Super Admin kapan saja
+```
+
+### 5. Alarm — SEMUA Keras, 24 Jam, Bypass Silent
+
+```
+KOREKSI BESAR:
+- Spec lama: ada level ALARM / HIGH / NORMAL
+- Kenyataan: SEMUA notifikasi harus ALARM KERAS
+  → Bunyi benar-benar dari HP
+  → Bypass silent mode / do not disturb
+  → 24 jam (tidak ada jam tenang — layanan kematian 24/7)
+  
+IMPLIKASI:
+  - flutter_local_notifications dengan full-screen intent
+  - Android: IMPORTANCE_HIGH + sound + vibration + bypass DND
+  - Semua push notification = alarm priority
+  - Tidak perlu bedakan ALARM vs HIGH vs NORMAL di UX
+    (di backend tetap bisa bedakan untuk logging/prioritas tampilan)
+```
+
+### 6. Device — HP Kantor (Bukan Pribadi)
+
+```
+- SM akan sediakan HP untuk setiap karyawan
+- App bisa di-pre-install sebelum diserahkan
+- Consent lokasi bisa di-setup saat provisioning HP
+- MDM (Mobile Device Management) mungkin perlu ke depannya
+```
+
+---
+
+## ITEM PENDING KUMULATIF
+
+```
+⏳ Detail paket layanan (nama, harga, isi per lokasi)
+⏳ Detail add-on yang tersedia
+⏳ Barang apa saja di Kantor vs Gudang vs Lafiore
+⏳ Detail mekanisme assign driver
+⏳ SOP keterlambatan bayar consumer
+⏳ Alur jenazah luar kota
+⏳ Jadwal kegiatan per hari di rumah duka
+⏳ Jadwal stock opname
+⏳ Prosedur barang rusak/hilang
+⏳ Siapa yang tentukan minimum stok
+⏳ Deadline tukang foto: alarm HRD jika terlambat?
+
+🔔 REMINDER AKTIF:
+  - PAKET LAYANAN → tanyakan owner
+  - TRANSPORT LUAR KOTA → tanyakan owner
+  - JADWAL PROSESI → tanyakan owner
+  - STOCK OPNAME & BARANG RUSAK → tanyakan owner
+```
+
+---
+
+# SANTA MARIA — PATCH v1.35
+# Klarifikasi Operasional Lanjutan 4 — Flow Kritis, Foto Wajib, Order Mendadak
+
+---
+
+## FAKTA KRITIS — GAME CHANGERS
+
+### 1. 100% ORDER = MENDADAK
+
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║  SEMUA ORDER ADALAH DARURAT                                       ║
+║  Orang baru meninggal → keluarga langsung order → butuh HARI INI  ║
+║  Tidak ada order yang "dijadwalkan minggu depan"                  ║
+║  SLA: order harus diproses DIBAWAH 30 MENIT                      ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+IMPLIKASI:
+  - Tidak ada waktu untuk "review besok" — semua real-time
+  - Stok harus SELALU siap (jangan sampai habis)
+  - Driver harus SELALU standby
+  - Alarm WAJIB segera direspons
+  - Auto-assign > manual assign (lebih cepat)
+  - 30 menit = dari order masuk → semua pihak konfirmasi stok → driver berangkat
+```
+
+### 2. SETIAP LANGKAH = BUKTI FOTO + GEOFENCING + TIMESTAMP
+
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║  SEMUA AKSI DI APP YANG MELIBATKAN FISIK → WAJIB FOTO + LOKASI   ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Setiap foto yang diambil via app WAJIB menyertakan:
+  - File foto (dari kamera, BUKAN galeri)
+  - Latitude + Longitude saat pengambilan (geofencing)
+  - Timestamp saat pengambilan (dari server, bukan device)
+  - Device ID (anti-manipulasi)
+
+MOMEN YANG BUTUH FOTO:
+  ├── Driver ambil barang di gudang/kantor/lafiore → foto barang di kendaraan
+  ├── Driver tiba di rumah duka → foto barang diturunkan
+  ├── Tukang jaga terima barang → foto barang diterima
+  ├── Driver jemput jenazah → foto di RS/rumah
+  ├── Driver tiba di rumah duka dengan jenazah → foto
+  ├── Dekorasi selesai dipasang → foto hasil
+  ├── Driver antar jenazah ke pemakaman → foto
+  ├── Tukang jaga serah terima barang ke driver (kembali) → foto
+  ├── Driver tiba di gudang/kantor/lafiore → foto barang dikembalikan
+  ├── Penerima di gudang/kantor/lafiore → foto konfirmasi terima
+  ├── Tukang jaga check-in shift → foto selfie + lokasi
+  ├── Tukang jaga switch shift → foto berdua
+  ├── Presensi harian (clock-in/out) → foto selfie + lokasi
+  ├── Inspeksi kendaraan → foto per item bermasalah
+  ├── Isi BBM → foto nota + speedometer
+  └── Barang rusak/hilang → foto bukti
+
+IMPLEMENTASI:
+  Buat reusable service: GeoPhotoService
+  - Buka kamera (BUKAN galeri)
+  - Ambil foto
+  - Auto-attach: lat, lng, accuracy, timestamp, device_id
+  - Compress (max 2MB)
+  - Return: { file, lat, lng, timestamp, device_id }
+  - Semua endpoint yang butuh foto → pakai service ini
+```
+
+### 3. ORDER INPUT — Data Wajib dari Consumer
+
+```
+Data WAJIB saat buat order:
+  ├── Foto KTP penanggung jawab (consumer)
+  ├── Foto Kartu Keluarga
+  ├── Nama almarhum
+  ├── Tanggal meninggal
+  ├── Pilih rumah duka (dari database funeral_homes)
+  ├── Pilih paket layanan
+  └── Data penanggung jawab (nama, alamat, telepon, hubungan)
+
+Data OPSIONAL:
+  ├── Add-on
+  ├── Preferensi vendor (pemuka agama sendiri, dll)
+  ├── Pilih pemakaman (dari database cemeteries)
+  └── Catatan khusus
+```
+
+### 4. ORDER FLOW — SLA 30 Menit
+
+```
+TIMELINE KETAT:
+  Menit 0    : Order masuk
+  Menit 0-5  : SO terima alarm → review data → konfirmasi
+  Menit 5-10 : Sistem auto-distribute ke gudang + kantor + lafiore
+               Ketiga lokasi cek stok (sudah otomatis dari paket)
+  Menit 10-20: Ketiga lokasi konfirmasi stok siap
+  Menit 20-25: Sistem auto-assign driver(s)
+  Menit 25-30: Driver berangkat
+
+  PARALEL: Mobil jenazah assigned → jemput jenazah di RS/rumah
+
+  Jika stok ada masalah → alert Purchasing → procurement darurat
+  Jika driver tidak available → fallback ke kendaraan paket lain
+```
+
+### 5. BARANG ANTAR LOKASI — Fleksibel
+
+```
+KOREKSI:
+- Tidak ada transfer stok antar lokasi (gudang↔kantor↔lafiore)
+- TAPI: jika barang di lokasi asal habis dan di lokasi lain ada → BOLEH pakai
+- Paket menentukan barang dari mana, TAPI jika habis → fallback ke lokasi lain
+- Sistem harus: cek lokasi utama → jika habis → cek lokasi lain → auto-switch
+```
+
+### 6. SAL (Surat Penerimaan Layanan)
+
+```
+Dua skenario:
+  A. SO ketemu fisik consumer → SO bantu isi → consumer tanda tangan di tablet
+  B. Consumer isi sendiri di app → consumer tanda tangan sendiri
+
+Tanda tangan:
+  - Dari SO (atas nama SM) → valid
+  - Dari consumer sendiri → valid
+  - Salah satu cukup (tidak harus dua-duanya)
+```
+
+### 7. TUKANG JAGA — Database Langganan, Auto-Assign
+
+```
+- Ada DATABASE tukang jaga (langganan, bukan cari baru setiap order)
+- Tukang jaga PUNYA APP SM (wajib untuk konfirmasi shift)
+- Assign ke order: OTOMATIS oleh sistem (bukan manual SO)
+- Sistem pilih berdasarkan: availability, jarak, riwayat kerja
+```
+
+### 8. SUPPLIER — Tagih Fisik ke Kantor
+
+```
+- Supplier datang FISIK ke kantor untuk tagih uang
+- Bukan via app atau invoice digital
+- Purchasing yang handle pembayaran di kantor
+- Tetap dicatat di sistem oleh Purchasing (input manual)
+```
+
+### 9. PURCHASING — Bisa Approve Sendiri
+
+```
+- Purchasing BISA langsung bayar tanpa approval owner
+- Tidak ada batas nominal yang butuh approval owner
+- Owner hanya MONITOR (sesuai v1.27)
+- Semua pengeluaran ter-log otomatis untuk audit
+```
+
+### 10. PROSESI MULTI RUMAH DUKA — Pernah Terjadi
+
+```
+- Pernah: hari 1-2 di rumah duka A, hari 3 pindah ke rumah duka B
+- Perlu support di order: multiple funeral_home_id per order
+- Atau: order bisa punya "phase" dengan lokasi berbeda per phase
+  ⏳ Detail implementasi perlu didiskusikan lebih lanjut
+```
+
+### 11. AMENDMENT (Barang Tambahan Tengah Prosesi)
+
+```
+Alur dikonfirmasi:
+  1. Consumer request via app ATAU WA ke SO
+  2. SO input di app (jika dari WA)
+  3. Barang dikirim ke rumah duka
+  4. Tukang jaga WAJIB konfirmasi terima di app
+  5. Tukang jaga minta consumer APPROVAL di app
+  6. Consumer approve di app → barang resmi diterima → masuk tagihan
+```
+
+### 12. OWNER DASHBOARD — 3 Angka Utama
+
+```
+Yang owner mau lihat SETIAP HARI:
+  1. ANOMALI — apa yang salah/terlambat/bermasalah hari ini
+  2. PENDAPATAN — uang masuk hari ini / bulan ini
+  3. JUMLAH ORDER — berapa order aktif hari ini
+
+PLUS: log aktivitas SEMUA karyawan di app (siapa buka apa, kapan)
+```
+
+### 13. EXPORT & DATA RETENTION
+
+```
+- SEMUA laporan bisa di-export PDF dan Excel
+- Untuk SEMUA role (bukan hanya owner/purchasing)
+- Data disimpan SELAMANYA (tidak ada auto-purge/arsip)
+- Implikasi: perlu strategi partitioning untuk tabel besar
+  (800 order/bulan × 12 bulan × N tahun = jutaan records)
+```
+
+---
+
+## DATABASE BARU v1.35
+
+### Tabel `photo_evidences` (Bukti Foto Universal + Geofencing)
+
+Tabel tunggal untuk SEMUA bukti foto di semua konteks.
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+context VARCHAR(100) NOT NULL
+  -- 'driver_pickup_goods', 'driver_arrive_rumah_duka', 'driver_pickup_body',
+  -- 'driver_arrive_cemetery', 'driver_return_goods', 'tukang_jaga_receive',
+  -- 'tukang_jaga_shift_checkin', 'tukang_jaga_shift_switch', 'dekor_complete',
+  -- 'attendance_clock_in', 'attendance_clock_out', 'vehicle_inspection',
+  -- 'fuel_receipt', 'item_damaged', 'goods_return_confirmed', dll
+
+-- Relasi (salah satu terisi sesuai context)
+order_id UUID NULLABLE REFERENCES orders(id)
+user_id UUID REFERENCES users(id)              -- siapa yang ambil foto
+reference_type VARCHAR(50) NULLABLE            -- 'order_driver_assignment', 'daily_attendance', dll
+reference_id UUID NULLABLE                     -- FK ke tabel terkait
+
+-- File
+file_path TEXT NOT NULL                        -- R2 path
+file_size_bytes BIGINT NULLABLE
+thumbnail_path TEXT NULLABLE                   -- thumbnail untuk list view
+
+-- Geofencing (WAJIB)
+latitude DECIMAL(10,7) NOT NULL
+longitude DECIMAL(10,7) NOT NULL
+accuracy_meters DECIMAL(8,2) NULLABLE
+altitude DECIMAL(10,2) NULLABLE
+
+-- Timestamp (WAJIB, dari server)
+taken_at TIMESTAMP NOT NULL                    -- waktu foto diambil
+server_received_at TIMESTAMP DEFAULT now()     -- waktu diterima server
+
+-- Device info
+device_id VARCHAR(255) NOT NULL
+device_model VARCHAR(255) NULLABLE
+
+-- Validasi
+is_validated BOOLEAN DEFAULT FALSE
+validated_by UUID NULLABLE REFERENCES users(id)
+validation_notes TEXT NULLABLE
+
+notes TEXT NULLABLE
+created_at TIMESTAMP
+
+INDEX: (context), (order_id), (user_id), (taken_at), (reference_type, reference_id)
+```
+
+### Tabel `activity_logs` (Log Aktivitas Semua Karyawan)
+
+Owner mau lihat SEMUA aktivitas karyawan di app.
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+user_id UUID REFERENCES users(id)
+action VARCHAR(255) NOT NULL                   -- 'open_screen', 'confirm_order', 'upload_photo', dll
+screen VARCHAR(255) NULLABLE                   -- 'so_dashboard', 'order_detail', dll
+metadata JSONB DEFAULT '{}'                    -- detail tambahan
+ip_address VARCHAR(50) NULLABLE
+device_id VARCHAR(255) NULLABLE
+created_at TIMESTAMP DEFAULT now()
+
+INDEX: (user_id, created_at), (action), (created_at)
+-- Partitioning by month recommended untuk volume tinggi
+```
+
+---
+
+## ITEM PENDING KUMULATIF
+
+```
+⏳ Detail paket layanan (nama, harga, isi per lokasi)
+⏳ Detail add-on yang tersedia
+⏳ Barang apa saja di Kantor vs Gudang vs Lafiore
+⏳ SOP keterlambatan bayar consumer
+⏳ Alur jenazah luar kota
+⏳ Jadwal kegiatan per hari di rumah duka
+⏳ Stock opname, barang rusak, minimum stok
+⏳ Detail prosesi multi rumah duka
+
+🔔 REMINDER AKTIF:
+  - PAKET LAYANAN → tanyakan owner
+  - TRANSPORT LUAR KOTA → tanyakan owner
+  - JADWAL PROSESI → tanyakan owner
+  - MULTI RUMAH DUKA → tanyakan owner detail
+```
+
+---
+
+# SANTA MARIA — PATCH v1.36
+# Klarifikasi Final — Role Baru, Consumer Journey, Target Go-Live
+
+---
+
+## TARGET GO-LIVE: MINGGU INI (April 2026)
+
+```
+PRIORITAS ABSOLUT — fitur yang HARUS jalan minggu ini:
+  1. Order masuk (consumer app + SO app) → confirmed → proses
+  2. Stok checklist per lokasi (gudang/kantor/lafiore) → konfirmasi
+  3. Driver auto-assign → antar barang + jemput jenazah
+  4. Tukang jaga shift + serah terima barang + consumer confirm
+  5. Tagihan → consumer bayar → Purchasing verifikasi
+  6. Foto + geofencing setiap langkah
+  7. Alarm keras semua notifikasi
+  8. Owner dashboard (anomali, pendapatan, jumlah order)
+
+BISA DITUNDA (post go-live):
+  - e-Katalog bidding supplier
+  - KPI & payroll otomatis
+  - AI features (demand prediction, price check, dll)
+  - CRM SO (prospek, visit log, target)
+  - Workshop peti
+  - Laporan keuangan detail (export PDF/Excel)
+  - Vehicle inspection & maintenance
+```
+
+## FAKTA OPERASIONAL FINAL
+
+### 1. ROLE BARU: Petugas Akta Kematian
+
+```
+Belum ada di spec sebelumnya.
+
+Role: petugas_akta
+Fungsi: Mengurus akta kematian untuk consumer
+  - Kumpulkan dokumen dari keluarga (KTP, KK, surat kematian RS, dll)
+  - Urus ke catatan sipil / kelurahan / kecamatan
+  - Track progress: tahap mana, sudah sampai di instansi mana
+  - Upload bukti progress (foto dokumen + geofencing)
+  - Serahkan akta kematian jadi ke keluarga (setelah consumer lunas)
+
+Status tracking akta:
+  draft → collecting_docs → submitted_to_civil → processing → completed → handed_to_family
+
+Perlu fitur:
+  - Checklist dokumen yang dibutuhkan (dari master, sudah ada death_cert_doc_master)
+  - Progress per instansi yang dikunjungi
+  - Foto bukti setiap kunjungan (geofencing)
+  - Timeline: kapan submit, kapan selesai, kapan serahkan
+  - Alert jika proses > threshold hari → alarm ke petugas + owner
+```
+
+### 2. KOORDINATOR TUKANG ANGKAT PETI — Punya App
+
+```
+- Koordinator PUNYA APP SM
+- Fungsi di app:
+  → Lihat order yang perlu tukang angkat peti
+  → Input jumlah orang yang bekerja per order
+  → Submit tagihan ke Purchasing via app
+  → Track status pembayaran
+- Purchasing lihat tagihan dari app → approve → bayar
+```
+
+### 3. MUSISI — Many-to-Many, Auto-Notify, Include MC
+
+```
+- Musisi sering dipakai (include MC/pembawa acara)
+- Many-to-many: 1 order bisa banyak musisi, 1 musisi bisa banyak order
+- PUNYA APP SM
+- Saat order confirmed → OTOMATIS semua musisi available dapat notifikasi
+- Musisi pilih "Saya ambil order ini" → assigned
+- Sistem upah per order (dinamis, bisa diatur)
+```
+
+### 4. CONSUMER JOURNEY — Lengkap
+
+```
+CHANNEL AWAL:
+  - Mulut ke mulut → keluarga hubungi SM
+  - Sales SO lapangan → visit RS/rumah
+  - Digital marketing → landing page → install app
+
+SETELAH ORDER:
+  - Jika order via app sendiri → dapat kontak WA Customer Service SM
+    (CS bukan role di app — hanya nomor WA kantor)
+  - Jika order via SO → komunikasi dengan SO tersebut
+  - Consumer TIDAK chat di dalam app — via WA saja
+
+TRACKING DI APP CONSUMER:
+  - Status text + progress bar (BUKAN peta real-time driver)
+  - Konfirmasi barang diterima (checklist)
+  - Approval amendment
+  - Lihat invoice / tagihan
+  - Upload bukti bayar
+
+SETELAH LUNAS:
+  - Akses foto dokumentasi (link Google Drive)
+  - Akses dokumen akta kematian
+  - Prompt: "Rate kami di Google Play" + "Rate di Google Maps"
+
+KOMPLAIN:
+  - Via SO (jika order melalui SO)
+  - Via WA Customer Service
+  - TIDAK ada fitur komplain di app
+```
+
+### 5. AGAMA — Semua Agama, Alur Sama
+
+```
+- SM melayani SEMUA agama
+- Prosesi beda agama: ALUR SAMA (tidak ada branching di sistem)
+- Perbedaan hanya di: pemuka agama yang di-assign (sesuai agama)
+- Paket TIDAK dibedakan per agama (akan dikonfirmasi saat detail paket)
+```
+
+### 6. AKTA KEMATIAN — SM Yang Urus, Perlu Progress Tracking
+
+```
+- SM yang urus akta kematian (bukan keluarga sendiri)
+- Dikerjakan oleh role baru: petugas_akta
+- Harus DETAIL progress sampai di mana
+- Consumer bisa lihat progress di app (setelah lunas)
+- Dokumen akta diserahkan ke keluarga setelah selesai
+```
+
+### 7. PENGGALI MAKAM — Di Luar SM
+
+```
+- Penggali makam BUKAN urusan SM
+- Pihak pemakaman yang urus
+- Tidak perlu di-track di app SM
+```
+
+### 8. KOMPETITOR & MARKET
+
+```
+- Kompetitor: Budi Cipto dll — belum digitalisasi
+- SM keunggulan: Cepat, Mudah, Hemat, Sejak 2004
+- Target: Semarang dan sekitarnya (belum ekspansi jauh)
+- Diferensiasi utama = APP INI (digitalisasi pertama di industri)
+```
+
+---
+
+## ROLE TABLE FINAL v1.36
+
+| # | Role | Tipe | Punya App | Fungsi |
+|---|------|------|-----------|--------|
+| 1 | super_admin | Sistem | Ya | God mode |
+| 2 | owner | Eksekutif | Ya | Monitor only, command |
+| 3 | service_officer | Internal | Ya | Komandan lapangan, input order, CRM |
+| 4 | gudang | Internal | Ya | Stok gudang, checklist, serah terima |
+| 5 | purchasing | Internal | Ya | Keuangan, bayar supplier/pekerja, verifikasi |
+| 6 | driver | Internal | Ya | Antar barang/jenazah, GPS, foto bukti |
+| 7 | dekor (Lafiore) | Internal | Ya | Stok dekorasi, pasang, foto bukti |
+| 8 | konsumsi | - | Tidak | Dari supplier, bukan role app |
+| 9 | pemuka_agama | Vendor | Opsional | Assignment per order, presensi |
+| 10 | tukang_foto | Freelance | Ya | Dokumentasi, upload GDrive link, upah |
+| 11 | tukang_jaga | Freelance | Ya | Jaga rumah duka, serah terima, shift |
+| 12 | tukang_angkat_peti | Freelance | Ya | Koordinator punya app, tagih via app |
+| 13 | musisi | Freelance | Ya | Include MC, many-to-many, auto-notify |
+| 14 | petugas_akta | Internal | Ya | Urus akta kematian, progress tracking |
+| 15 | hrd | Internal | Ya | KPI, gaji, pelanggaran |
+| 16 | security | Internal | Ya | Jaga kantor, lapor tamu |
+| 17 | supplier | Eksternal | Ya (tetap) | e-Katalog bidding |
+| 18 | consumer | Eksternal | Ya | Order, track, bayar |
+| 19 | viewer | Eksternal | Ya | Read-only dashboard |
+
+KOREKSI: konsumsi BUKAN role app — konsumsi = supplier luar yang kirim langsung.
+```
+
+---
+
+## ITEM PENDING KUMULATIF FINAL
+
+```
+⏳ Detail paket layanan (nama, harga, isi per lokasi)
+⏳ Detail add-on yang tersedia
+⏳ Barang apa saja di Kantor vs Gudang vs Lafiore
+⏳ SOP keterlambatan bayar consumer
+⏳ Alur jenazah luar kota
+⏳ Jadwal kegiatan per hari di rumah duka
+⏳ Stock opname, barang rusak, minimum stok
+⏳ Detail prosesi multi rumah duka
+⏳ Workflow petugas akta kematian detail
+
+🔔 REMINDER AKTIF:
+  - PAKET LAYANAN → tanyakan owner
+  - TRANSPORT LUAR KOTA → tanyakan owner
+  - JADWAL PROSESI → tanyakan owner
+  - MULTI RUMAH DUKA → tanyakan owner
+```
+
+---
+
+# SANTA MARIA — PATCH v1.37
+# Nomor WA CS, Form Design Micro-Interactions, UX Error Handling
+
+---
+
+## INFORMASI KONTAK RESMI
+
+```
+WhatsApp Customer Service Santa Maria: 08112714440
+Format internasional: 6281127144440
+
+Digunakan untuk:
+  - Consumer yang order via app → dapat kontak CS ini
+  - Landing page → tombol WA floating
+  - Template WA → footer kontak
+```
+
+### System Thresholds Update
+```
+cs_whatsapp_number = '08112714440'
+cs_whatsapp_international = '6281127144440'
+```
+
+---
+
+## FORM DESIGN & MICRO-INTERACTIONS — WAJIB DIIKUTI
+
+### Prinsip UX Error Handling
+
+```
+SETIAP form di SELURUH app WAJIB memiliki:
+
+1. VALIDASI REAL-TIME (per field)
+   - Saat user ketik → validasi langsung (debounce 300ms)
+   - Border merah + pesan error di bawah field jika invalid
+   - Border hijau + centang jika valid
+   - Contoh: email format salah → "Format email tidak valid"
+
+2. ERROR STATE YANG JELAS
+   - Password salah → SnackBar merah: "Email atau password salah"
+   - Network error → SnackBar merah: "Tidak ada koneksi internet"
+   - Server error (500) → SnackBar merah: "Terjadi kesalahan server. Coba lagi."
+   - Timeout → SnackBar merah: "Koneksi timeout. Periksa jaringan Anda."
+   - 422 Validation → tampilkan error per field dari response
+   - 401 Unauthorized → redirect ke login
+   - 403 Forbidden → SnackBar: "Anda tidak memiliki akses"
+   - 404 Not Found → SnackBar: "Data tidak ditemukan"
+   - 429 Rate Limited → SnackBar: "Terlalu banyak percobaan. Coba lagi nanti."
+
+3. LOADING STATE
+   - Tombol submit → loading spinner di dalam tombol + disable
+   - JANGAN: spinner di tengah layar tanpa konteks
+   - Teks tombol berubah: "Simpan" → "Menyimpan..." → kembali "Simpan"
+
+4. SUCCESS STATE
+   - SnackBar hijau: "Data berhasil disimpan"
+   - Atau dialog sukses dengan ikon centang + auto-dismiss 2 detik
+   - Navigate back atau refresh data setelah sukses
+
+5. EMPTY STATE
+   - List kosong → tampilkan ilustrasi + teks: "Belum ada data"
+   - JANGAN: layar putih kosong tanpa penjelasan
+
+6. PULL TO REFRESH
+   - Semua list screen WAJIB support pull-to-refresh
+
+7. CONFIRMATION DIALOG
+   - Aksi destruktif (hapus, batalkan, tolak) → dialog konfirmasi dulu
+   - "Apakah Anda yakin?" + tombol "Ya" (merah) dan "Batal" (abu)
+
+8. FORM FIELD DESIGN
+   - Label di atas field (bukan floating label)
+   - Hint text di dalam field (abu-abu)
+   - Required field: label + tanda * merah
+   - Disabled field: background abu-abu muda
+   - Error: border merah + teks error merah di bawah
+   - Focus: border warna aksen role
+```
+
+### Implementasi Flutter — Error Handler Global
+
+```dart
+// Di ApiClient interceptor, handle semua HTTP errors secara konsisten:
+
+// 401 → redirect ke login
+// 403 → show "Tidak memiliki akses"
+// 404 → show "Data tidak ditemukan"
+// 422 → return errors per field ke form
+// 429 → show "Terlalu banyak percobaan" + retry-after
+// 500 → show "Kesalahan server"
+// Network error → show "Tidak ada koneksi internet"
+// Timeout → show "Koneksi timeout"
+```
+
+### Login Screen — Specific Error Messages
+
+```
+Email tidak terdaftar     → "Akun tidak ditemukan"
+Password salah            → "Password salah. Coba lagi."
+Akun nonaktif             → "Akun Anda dinonaktifkan. Hubungi admin."
+Terlalu banyak percobaan  → "Terlalu banyak percobaan. Coba lagi dalam X detik."
+Belum verifikasi          → "Akun belum diverifikasi."
+```
+
+---
+
 *Dilarang mengurangi atau memodifikasi prompt ini tanpa persetujuan owner proyek*

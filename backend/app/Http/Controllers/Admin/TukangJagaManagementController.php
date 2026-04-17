@@ -126,11 +126,12 @@ class TukangJagaManagementController extends Controller
         ]);
 
         // Notif ke tukang jaga
-        app(NotificationService::class)->sendToUser(
+        NotificationService::send(
             $user->id,
-            'SHIFT_ASSIGNED',
-            ['shift_number' => $shift->shift_number, 'scheduled_start' => $shift->scheduled_start->format('d M Y H:i'), 'order_number' => $shift->order?->order_number],
-            $shift->order_id
+            'HIGH',
+            'Shift Baru Ditugaskan',
+            "Anda ditugaskan shift #{$shift->shift_number} untuk order {$shift->order?->order_number} mulai {$shift->scheduled_start->format('d M Y H:i')}.",
+            ['shift_id' => $shift->id, 'shift_number' => $shift->shift_number, 'order_number' => $shift->order?->order_number]
         );
 
         return response()->json(['success' => true, 'data' => $shift->fresh('assignedUser'), 'message' => 'Tukang jaga berhasil di-assign.']);

@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
+import '../../../shared/widgets/confirm_dialog.dart';
 
 class SuperAdminRoleManagementScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -72,39 +73,21 @@ class _SuperAdminRoleManagementScreenState
   }
 
   Future<void> _deleteRole(Map<String, dynamic> role) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Role'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Hapus role "${role['label']}" (${role['slug']})?'),
-            if ((role['user_count'] ?? 0) > 0) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Peringatan: ${role['user_count']} pengguna masih menggunakan role ini.',
-                style: const TextStyle(color: Colors.orange, fontSize: 13),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hapus', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+    final userCount = role['user_count'] ?? 0;
+    final warning = userCount > 0
+        ? 'Hapus role "${role['label']}" (${role['slug']})?\n\nPeringatan: $userCount pengguna masih menggunakan role ini.'
+        : 'Hapus role "${role['label']}" (${role['slug']})?';
+
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: 'Hapus Role',
+      message: warning,
+      confirmLabel: 'Hapus',
+      confirmColor: Colors.red,
+      icon: Icons.delete_outline,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       await widget.apiClient.dio.delete('/super-admin/roles/${role['id']}');

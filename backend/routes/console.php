@@ -38,5 +38,15 @@ Schedule::command('death-cert:check-pending')->dailyAt('09:00')->timezone('Asia/
 Schedule::command('kpi:calculate-monthly')->monthlyOn(1, '02:00')->timezone('Asia/Jakarta');
 Schedule::command('kpi:refresh-current-period')->everySixHours();
 
+// v1.31 — Stuck items detection & foto deadline
+Schedule::command('items:detect-stuck')->everyTwoHours();
+Schedule::command('foto:check-deadline')->everyThirtyMinutes();
+
+// v1.29 — Payment reminders to consumers (every 6 hours)
+Schedule::command('payment:send-reminders')->everySixHours();
+
+// SO daily report at 20:00 WIB
+Schedule::command('so:daily-report')->dailyAt('20:00')->timezone('Asia/Jakarta');
+
 // v1.15 — Financial report regeneration
 Schedule::call(fn() => \App\Models\FinancialReport::regenerateAll())->hourly();

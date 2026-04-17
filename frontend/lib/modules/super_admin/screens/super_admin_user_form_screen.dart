@@ -30,6 +30,8 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
   bool _isSubmitting = false;
   bool _obscurePassword = true;
   String _selectedRole = 'service_officer';
+  // Consent pemantauan lokasi — wajib dicentang HR sebelum simpan karyawan baru
+  bool _locationConsentGranted = false;
 
   // Dynamic roles loaded from API
   List<Map<String, dynamic>> _availableRoles = [];
@@ -112,21 +114,27 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
         await widget.apiClient.dio
             .put('/super-admin/users/${widget.existingUser!['id']}', data: data);
       } else {
+        if (!_locationConsentGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Centang persetujuan pemantauan lokasi terlebih dahulu.')),
+          );
+          setState(() => _isSubmitting = false);
+          return;
+        }
         await widget.apiClient.dio.post('/super-admin/users', data: {
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
           'phone': _phoneController.text.trim(),
           'password': _passwordController.text,
           'role': _selectedRole,
+          'location_consent': true,
           if (_religionController.text.trim().isNotEmpty)
             'religion': _religionController.text.trim(),
         });
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                _isEdit ? 'Akun berhasil diperbarui.' : 'Akun berhasil dibuat.')),
+        SnackBar(content: Text(_isEdit ? 'Akun berhasil diperbarui.' : 'Akun berhasil dibuat.')),
       );
       Navigator.pop(context);
     } catch (_) {
@@ -256,6 +264,37 @@ class _SuperAdminUserFormScreenState extends State<SuperAdminUserFormScreen> {
                   controller: _religionController,
                   label: 'Agama yang Dilayani',
                   icon: Icons.church_outlined,
+                ),
+              ],
+              // Consent pemantauan lokasi — hanya saat buat karyawan baru
+              if (!_isEdit) ...[
+                const SizedBox(height: 24),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _locationConsentGranted
+                        ? AppColors.brandPrimary.withValues(alpha: 0.06)
+                        : Colors.orange.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _locationConsentGranted
+                          ? AppColors.brandPrimary.withValues(alpha: 0.3)
+                          : Colors.orange.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: CheckboxListTile(
+                    value: _locationConsentGranted,
+                    onChanged: (v) => setState(() => _locationConsentGranted = v ?? false),
+                    activeColor: AppColors.brandPrimary,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text(
+                      'Karyawan menyetujui pemantauan lokasi',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'HR mewakili karyawan dalam menyetujui bahwa lokasi mereka akan dipantau selama jam kerja untuk keperluan operasional.',
+                      style: TextStyle(fontSize: 11, height: 1.4),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 32),

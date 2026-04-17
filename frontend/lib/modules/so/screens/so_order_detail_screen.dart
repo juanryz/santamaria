@@ -9,6 +9,7 @@ import 'so_extra_approval_screen.dart';
 import 'so_acceptance_letter_screen.dart';
 import '../../../core/services/whatsapp_service.dart';
 import '../../tukang_foto/screens/gallery_link_screen.dart';
+import 'so_amendment_screen.dart';
 
 class SOOrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -442,6 +443,22 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
                       orderNumber: order['order_number'] ?? '',
                       role: 'Service Officer',
                     ),
+                  ),
+                // Amendment — visible when order is active
+                if (['confirmed', 'in_progress', 'preparing', 'ready_to_dispatch',
+                     'driver_assigned', 'delivering_equipment', 'equipment_arrived',
+                     'picking_up_body', 'body_arrived', 'in_ceremony']
+                    .contains(order['status']))
+                  ActionChip(
+                    avatar: const Icon(Icons.add_shopping_cart, size: 18, color: AppColors.roleSO),
+                    label: const Text('Amendment', style: TextStyle(fontSize: 12)),
+                    backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => SOAmendmentScreen(
+                        orderId: widget.orderId,
+                        orderNumber: order['order_number'] ?? '',
+                      ),
+                    )),
                   ),
                 // Gallery link dari Tukang Foto
                 ActionChip(

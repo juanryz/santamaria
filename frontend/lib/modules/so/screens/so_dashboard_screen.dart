@@ -9,7 +9,10 @@ import '../../../shared/widgets/glass_widget.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'so_order_detail_screen.dart';
 import 'so_create_order_screen.dart';
+import 'so_crm_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
+import '../../../shared/screens/employee_command_screen.dart';
+import '../../../shared/screens/role_inventory_screen.dart';
 
 class SODashboardScreen extends StatefulWidget {
   const SODashboardScreen({super.key});
@@ -112,6 +115,44 @@ class _SODashboardScreenState extends State<SODashboardScreen> {
                     onChanged: (val) => setState(() => _searchQuery = val),
                   ),
                 ),
+                // Stok Kantor quick access card
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                  child: GlassWidget(
+                    borderRadius: 16,
+                    blurSigma: 12,
+                    tint: AppColors.roleSO.withValues(alpha: 0.06),
+                    borderColor: AppColors.roleSO.withValues(alpha: 0.15),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RoleInventoryScreen()),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _roleColor.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.inventory_2_outlined, color: AppColors.roleSO, size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Stok Kantor', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text('Kelola inventaris kantor SO', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: AppColors.textHint, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
                 Expanded(child: _buildBody()),
               ],
             ),
@@ -158,6 +199,28 @@ class _SODashboardScreenState extends State<SODashboardScreen> {
               ],
             ),
           ),
+          GlassWidget(
+            borderRadius: 12,
+            blurSigma: 10,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(8),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SoCrmScreen())),
+            child: const Icon(Icons.people_alt, color: AppColors.roleSO, size: 20),
+          ),
+          const SizedBox(width: 8),
+          GlassWidget(
+            borderRadius: 12,
+            blurSigma: 10,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(8),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleSO))),
+            child: const Icon(Icons.campaign, color: AppColors.roleSO, size: 20),
+          ),
+          const SizedBox(width: 8),
           GlassWidget(
             borderRadius: 12,
             blurSigma: 10,

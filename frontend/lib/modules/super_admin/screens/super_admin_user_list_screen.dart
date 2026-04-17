@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
+import '../../../shared/widgets/confirm_dialog.dart';
 import 'super_admin_user_form_screen.dart';
 
 class SuperAdminUserListScreen extends StatefulWidget {
@@ -90,31 +91,16 @@ class _SuperAdminUserListScreenState extends State<SuperAdminUserListScreen> {
   Future<void> _toggleActive(Map<String, dynamic> user) async {
     final isActive = user['is_active'] as bool? ?? true;
     final action = isActive ? 'Nonaktifkan' : 'Aktifkan';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('$action Akun?'),
-        content: Text('$action akun ${user['name']}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isActive
-                  ? AppColors.statusDanger
-                  : AppColors.statusSuccess,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(action),
-          ),
-        ],
-      ),
+    final confirmed = await ConfirmDialog.show(
+      context,
+      title: '$action Akun?',
+      message: '$action akun ${user['name']}?',
+      confirmLabel: action,
+      confirmColor: isActive ? AppColors.statusDanger : AppColors.statusSuccess,
+      icon: isActive ? Icons.person_off : Icons.person,
     );
 
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     try {
       final endpoint = isActive

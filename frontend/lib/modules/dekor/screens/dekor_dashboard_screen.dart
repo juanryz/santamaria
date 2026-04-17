@@ -8,6 +8,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
+import '../../../shared/screens/role_inventory_screen.dart';
+import '../../../shared/screens/role_fulfillment_screen.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'dekor_daily_package_screen.dart';
 
@@ -286,75 +288,103 @@ class _DekorDashboardScreenState extends State<DekorDashboardScreen> {
   }
 
   Widget _buildQuickAccess() {
-    // Only show if there are confirmed assignments (can navigate to daily package)
     final confirmedAssignments = _assignments
         .where(
             (a) => _statusOf(Map<String, dynamic>.from(a)) == 'confirmed')
         .toList();
 
-    return Container(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: GlassRoleWidget(
-        roleColor: _roleColor,
-        borderRadius: 16,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        onTap: confirmedAssignments.isNotEmpty
-            ? () {
-                // Navigate to daily package for the first confirmed order
-                final order = Map<String, dynamic>.from(
-                    confirmedAssignments.first);
-                final orderId = order['order_id']?.toString() ??
-                    order['id']?.toString() ??
-                    '';
-                if (orderId.isNotEmpty) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          DekorDailyPackageScreen(orderId: orderId),
-                    ),
-                  );
-                }
-              }
-            : null,
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: _roleColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.local_florist, color: _roleColor, size: 22),
+      child: Column(
+        children: [
+          // Stok Dekorasi — role-agnostic inventory
+          _buildQuickAccessCard(
+            icon: Icons.inventory_2_outlined,
+            title: 'Stok Dekorasi',
+            subtitle: 'Kelola inventaris bunga & material',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RoleInventoryScreen()),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Paket Harian La Fiore',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                  Text(
-                    confirmedAssignments.isNotEmpty
-                        ? '${confirmedAssignments.length} tugas aktif'
-                        : 'Belum ada tugas aktif',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
+          ),
+          const SizedBox(height: 8),
+          // Paket Harian La Fiore
+          _buildQuickAccessCard(
+            icon: Icons.local_florist,
+            title: 'Paket Harian La Fiore',
+            subtitle: confirmedAssignments.isNotEmpty
+                ? '${confirmedAssignments.length} tugas aktif'
+                : 'Belum ada tugas aktif',
+            onTap: confirmedAssignments.isNotEmpty
+                ? () {
+                    final order = Map<String, dynamic>.from(
+                        confirmedAssignments.first);
+                    final orderId = order['order_id']?.toString() ??
+                        order['id']?.toString() ??
+                        '';
+                    if (orderId.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              DekorDailyPackageScreen(orderId: orderId),
+                        ),
+                      );
+                    }
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickAccessCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
+  }) {
+    return GlassRoleWidget(
+      roleColor: _roleColor,
+      borderRadius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _roleColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const Icon(Icons.chevron_right, color: AppColors.textHint),
-          ],
-        ),
+            child: Icon(icon, color: _roleColor, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: AppColors.textHint),
+        ],
       ),
     );
   }
@@ -529,8 +559,36 @@ class _DekorDashboardScreenState extends State<DekorDashboardScreen> {
               ),
             ],
 
-            // Quick access to daily package (for confirmed assignments)
+            // Quick access to checklist + daily package (for confirmed assignments)
             if (isConfirmed) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    final orderId = assignment['order_id']?.toString() ??
+                        assignment['id']?.toString() ??
+                        '';
+                    if (orderId.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              RoleFulfillmentScreen(orderId: orderId),
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.checklist_outlined, size: 16),
+                  label: const Text('Checklist Order'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _roleColor,
+                    side: BorderSide(color: _roleColor.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,

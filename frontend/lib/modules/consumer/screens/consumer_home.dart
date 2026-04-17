@@ -7,6 +7,7 @@ import '../../../shared/widgets/glass_widget.dart';
 
 import 'consumer_create_order_screen.dart';
 import 'order_tracking_screen.dart';
+import 'chat_screen.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -201,7 +202,7 @@ class _ConsumerHomeState extends State<ConsumerHome> {
                             borderColor: AppColors.statusSuccess.withValues(alpha: 0.20),
                             padding: const EdgeInsets.all(20),
                             onTap: () async {
-                              final url = Uri.parse("https://wa.me/628113619222"); // Santa Maria Contact
+                              final url = Uri.parse("https://wa.me/6281127144440"); // Santa Maria Contact
                               if (await canLaunchUrl(url)) {
                                 await launchUrl(url);
                               }
@@ -239,6 +240,55 @@ class _ConsumerHomeState extends State<ConsumerHome> {
                                 ),
                                 const Icon(Icons.chevron_right,
                                     color: AppColors.statusSuccess, size: 20),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // AI Chat Banner
+                          GlassWidget(
+                            borderRadius: 20,
+                            blurSigma: 16,
+                            tint: AppColors.brandPrimary.withValues(alpha: 0.08),
+                            borderColor: AppColors.brandPrimary.withValues(alpha: 0.20),
+                            padding: const EdgeInsets.all(20),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const ChatScreen()),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.brandPrimary.withValues(alpha: 0.15),
+                                  ),
+                                  child: const Icon(Icons.smart_toy_outlined,
+                                      color: AppColors.brandPrimary, size: 22),
+                                ),
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Asisten AI Santa Maria',
+                                          style: TextStyle(
+                                              color: AppColors.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15)),
+                                      SizedBox(height: 2),
+                                      Text(
+                                          'Ceritakan kebutuhan Anda, AI bantu isi formulir',
+                                          style: TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    color: AppColors.brandPrimary, size: 20),
                               ],
                             ),
                           ),

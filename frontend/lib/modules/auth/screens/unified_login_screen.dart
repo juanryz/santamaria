@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/role_constants.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../admin/screens/admin_dashboard_screen.dart';
@@ -115,13 +116,7 @@ class _UnifiedLoginScreenState extends State<UnifiedLoginScreen> {
       _routeByRole(auth.user?['role']);
     } catch (e) {
       if (mounted) {
-        String msg = 'Login gagal. Periksa kembali kredensial Anda.';
-        if (e.toString().contains('401')) {
-          msg = 'Kredensial (Email/Password) salah.';
-        } else if (e.toString().contains('403')) {
-          msg = 'Akun tidak aktif atau belum diverifikasi.';
-        }
-        _snack('$msg ($e)');
+        _snack(ErrorHandler.getLoginMessage(e));
       }
     }
   }
@@ -431,7 +426,7 @@ class _UnifiedLoginScreenState extends State<UnifiedLoginScreen> {
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            final url = Uri.parse("https://wa.me/628113619222");
+                            final url = Uri.parse("https://wa.me/6281127144440");
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url);
                             }

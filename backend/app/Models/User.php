@@ -146,6 +146,12 @@ class User extends Authenticatable
         return $this->hasMany(KpiUserSummary::class);
     }
 
+    /** Driver assignments (active legs) */
+    public function driverAssignments()
+    {
+        return $this->hasMany(OrderDriverAssignment::class, 'driver_id');
+    }
+
     /** Helper: is this user a purchasing/finance role */
     public function isPurchasing(): bool
     {

@@ -16,8 +16,11 @@ class RoleConstants {
   static const tukangFoto = 'tukang_foto';
   static const tukangAngkatPeti = 'tukang_angkat_peti';
   static const purchasing = 'purchasing';
+  static const musisi = 'musisi';
+  static const security = 'security';
+  static const tukangJaga = 'tukang_jaga';
 
-  static const vendorRoles = [dekor, konsumsi, supplier, pemukaAgama, tukangFoto, tukangAngkatPeti];
+  static const vendorRoles = [dekor, konsumsi, supplier, pemukaAgama, tukangFoto, tukangAngkatPeti, musisi];
   static const viewerRoles = [viewer];
   static const internalRoles = [serviceOfficer, admin, gudang, finance, driver, owner, hrd, purchasing];
   static const activeRoles = [consumer, serviceOfficer, admin, gudang, finance, driver, dekor, konsumsi, supplier, owner, pemukaAgama, hrd, viewer, tukangFoto, tukangAngkatPeti, purchasing];

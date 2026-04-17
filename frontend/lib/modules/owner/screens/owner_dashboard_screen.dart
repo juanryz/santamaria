@@ -12,6 +12,7 @@ import '../../../shared/widgets/glass_widget.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import '../../hrd/screens/kpi_management_screen.dart';
 import 'owner_fleet_map_screen.dart';
+import 'owner_command_screen.dart';
 
 class OwnerDashboardScreen extends StatefulWidget {
   const OwnerDashboardScreen({super.key});
@@ -29,7 +30,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
   List<dynamic> _reports = [];
   List<dynamic> _anomalies = [];
   bool _isLoading = true;
-  int _tab = 0; // 0=Dashboard, 1=Orders, 2=Anomali, 3=Laporan, 4=KPI
+  int _tab = 0; // 0=Dashboard, 1=Orders, 2=Anomali, 3=Laporan, 4=KPI, 5=Armada, 6=Perintah
 
   // Map
   final MapController _mapCtrl = MapController();
@@ -239,6 +240,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
       (Icons.analytics_outlined, 'Laporan'),
       (Icons.leaderboard_outlined, 'KPI'),
       (Icons.map_outlined, 'Armada'),
+      (Icons.campaign_outlined, 'Perintah'),
     ];
     return Container(
       color: AppColors.background,
@@ -290,7 +292,8 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
       2 => _buildAnomaliesTab(key: const ValueKey(2)),
       3 => _buildReportsTab(key: const ValueKey(3)),
       4 => const KpiManagementScreen(),
-      _ => const OwnerFleetMapScreen(),
+      5 => const OwnerFleetMapScreen(),
+      _ => const OwnerCommandScreen(),
     };
   }
 
@@ -303,7 +306,11 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildRevenueCard(),
+            _buildOrderTodayCard(),
+            const SizedBox(height: 14),
+            _buildIncomeCard(),
+            const SizedBox(height: 14),
+            _buildOperationalAnomalies(),
             const SizedBox(height: 16),
             _buildOrderRingChart(),
             const SizedBox(height: 16),
@@ -318,6 +325,267 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
           ],
         ),
       );
+
+  // ── Top Card: Order Hari Ini ──────────────────────────────────────────
+  Widget _buildOrderTodayCard() {
+    final todayCount = int.tryParse(_stats['orders_today']?.toString() ?? '0') ?? 0;
+    final activeCount = int.tryParse(_stats['active_orders']?.toString() ?? '0') ?? 0;
+    final completedCount = int.tryParse(_stats['completed_orders']?.toString() ?? '0') ?? 0;
+
+    return GlassWidget(
+      borderRadius: 20,
+      blurSigma: 16,
+      tint: AppColors.roleConsumer.withValues(alpha: 0.07),
+      borderColor: AppColors.roleConsumer.withValues(alpha: 0.18),
+      padding: const EdgeInsets.all(22),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.roleConsumer.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Text(
+                '$todayCount',
+                style: const TextStyle(
+                    color: AppColors.roleConsumer,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('ORDER HARI INI',
+                    style: TextStyle(
+                        color: AppColors.roleConsumer,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5)),
+                const SizedBox(height: 6),
+                Text(
+                  'Aktif: $activeCount  |  Selesai: $completedCount',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Income Card: Today + Month ──────────────────────────────────────────
+  Widget _buildIncomeCard() {
+    final todayIncome = double.tryParse(_stats['revenue_today']?.toString() ?? '0') ?? 0;
+    final monthIncome = double.tryParse(_stats['total_revenue']?.toString() ?? '0') ?? 0;
+    final fmt = NumberFormat('#,###');
+
+    return GlassWidget(
+      borderRadius: 20,
+      blurSigma: 16,
+      tint: AppColors.statusSuccess.withValues(alpha: 0.06),
+      borderColor: AppColors.statusSuccess.withValues(alpha: 0.18),
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('PENDAPATAN',
+              style: TextStyle(
+                  color: AppColors.statusSuccess,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Hari ini',
+                        style: TextStyle(color: AppColors.textHint, fontSize: 11)),
+                    const SizedBox(height: 2),
+                    Text('Rp ${fmt.format(todayIncome)}',
+                        style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900)),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 36, color: AppColors.glassBorder),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Bulan ini',
+                        style: TextStyle(color: AppColors.textHint, fontSize: 11)),
+                    const SizedBox(height: 2),
+                    Text('Rp ${fmt.format(monthIncome)}',
+                        style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Operational Anomalies Card ──────────────────────────────────────────
+  Widget _buildOperationalAnomalies() {
+    // Build anomaly items from available data
+    final items = <Map<String, dynamic>>[];
+
+    // Orders pending too long (from _orders)
+    for (final o in _orders) {
+      if (o is! Map) continue;
+      final status = o['status'] as String? ?? '';
+      if (status == 'pending' || status == 'admin_review') {
+        final createdAt = DateTime.tryParse(o['created_at']?.toString() ?? '');
+        if (createdAt != null && DateTime.now().difference(createdAt).inMinutes > 30) {
+          items.add({
+            'icon': Icons.hourglass_top,
+            'color': AppColors.statusWarning,
+            'title': 'Order belum dikonfirmasi > 30 menit',
+            'detail': '${o['order_number']} — ${o['deceased_name'] ?? '-'}',
+          });
+        }
+      }
+    }
+
+    // Price anomalies from existing data
+    for (final a in _anomalies) {
+      if (a is! Map) continue;
+      items.add({
+        'icon': Icons.price_change,
+        'color': AppColors.statusDanger,
+        'title': 'Anomali harga: ${a['item_name'] ?? '-'}',
+        'detail': 'Selisih +${(a['price_variance_pct'] as num?)?.toStringAsFixed(1) ?? '?'}% di atas pasar',
+      });
+    }
+
+    // Payments overdue — check orders that are completed but not paid
+    for (final o in _orders) {
+      if (o is! Map) continue;
+      final status = o['status'] as String? ?? '';
+      final paymentStatus = o['payment_status'] as String? ?? '';
+      if (status == 'completed' && paymentStatus != 'paid' && paymentStatus != 'proof_uploaded') {
+        final completedAt = DateTime.tryParse(o['completed_at']?.toString() ?? '');
+        if (completedAt != null && DateTime.now().difference(completedAt).inDays >= 3) {
+          items.add({
+            'icon': Icons.payment,
+            'color': Colors.orange.shade700,
+            'title': 'Pembayaran overdue > 3 hari',
+            'detail': '${o['order_number']} — ${o['deceased_name'] ?? '-'}',
+          });
+        }
+      }
+    }
+
+    final anomalyCount = items.length;
+
+    return GlassWidget(
+      borderRadius: 20,
+      blurSigma: 16,
+      tint: anomalyCount > 0
+          ? AppColors.statusDanger.withValues(alpha: 0.05)
+          : AppColors.statusSuccess.withValues(alpha: 0.05),
+      borderColor: anomalyCount > 0
+          ? AppColors.statusDanger.withValues(alpha: 0.18)
+          : AppColors.statusSuccess.withValues(alpha: 0.18),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                anomalyCount > 0 ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                color: anomalyCount > 0 ? AppColors.statusDanger : AppColors.statusSuccess,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'ANOMALI',
+                style: TextStyle(
+                    color: anomalyCount > 0 ? AppColors.statusDanger : AppColors.statusSuccess,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5),
+              ),
+              const Spacer(),
+              if (anomalyCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.statusDanger.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('$anomalyCount',
+                      style: const TextStyle(
+                          color: AppColors.statusDanger,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (anomalyCount == 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Tidak ada masalah operasional saat ini.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            )
+          else
+            ...items.take(5).map((item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(item['icon'] as IconData, size: 16, color: item['color'] as Color),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item['title'] as String,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600)),
+                            Text(item['detail'] as String,
+                                style: const TextStyle(
+                                    color: AppColors.textSecondary, fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          if (anomalyCount > 5)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('+ ${anomalyCount - 5} anomali lainnya...',
+                  style: const TextStyle(color: AppColors.textHint, fontSize: 11)),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildRevenueCard() => GlassWidget(
         borderRadius: 20,

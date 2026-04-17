@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/geo_photo_service.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 
@@ -79,6 +80,57 @@ class _DriverTripLogScreenState extends State<DriverTripLogScreen> {
     }
   }
 
+  Future<void> _logKmWithPhoto(String tripId, String photoContext, String kmField) async {
+    // 1. Take speedometer photo with GPS
+    final geoPhoto = await GeoPhotoService.instance.capture();
+    if (geoPhoto == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto speedometer wajib diambil')));
+      return;
+    }
+
+    // 2. Ask for KM reading
+    final kmCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(kmField == 'km_berangkat' ? 'KM Berangkat' : 'KM Tiba'),
+        content: TextField(
+          controller: kmCtrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Angka KM Speedometer *'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Simpan')),
+        ],
+      ),
+    );
+
+    if (confirmed != true || kmCtrl.text.isEmpty || !mounted) return;
+
+    try {
+      // 3. Upload photo evidence
+      await GeoPhotoService.instance.uploadEvidence(
+        geoPhoto: geoPhoto,
+        context: photoContext,
+        referenceType: 'vehicle_trip_log',
+        referenceId: tripId,
+        notes: '$kmField: ${kmCtrl.text}',
+      );
+
+      // 4. Update trip log KM
+      await _api.dio.put('/driver/vehicle-trip-logs/$tripId', data: {
+        kmField: double.tryParse(kmCtrl.text) ?? 0,
+      });
+
+      _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KM tercatat dengan foto')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,6 +177,32 @@ class _DriverTripLogScreenState extends State<DriverTripLogScreen> {
                                   Text('KM: ${l['km_total']} | Biaya: Rp ${l['total_biaya'] ?? '-'}',
                                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                                 ],
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    if (l['km_berangkat'] == null)
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _logKmWithPhoto(l['id'], 'driver_trip_start', 'km_berangkat'),
+                                          icon: const Icon(Icons.play_arrow, size: 16),
+                                          label: const Text('KM Berangkat'),
+                                        ),
+                                      )
+                                    else
+                                      Expanded(child: Text('KM Berangkat: ${l['km_berangkat']}', style: const TextStyle(fontSize: 12, color: Colors.green))),
+                                    const SizedBox(width: 8),
+                                    if (l['km_berangkat'] != null && l['km_tiba'] == null)
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _logKmWithPhoto(l['id'], 'driver_trip_end', 'km_tiba'),
+                                          icon: const Icon(Icons.stop, size: 16),
+                                          label: const Text('KM Tiba'),
+                                        ),
+                                      )
+                                    else if (l['km_tiba'] != null)
+                                      Expanded(child: Text('KM Tiba: ${l['km_tiba']}', style: const TextStyle(fontSize: 12, color: Colors.green))),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
