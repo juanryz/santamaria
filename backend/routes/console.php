@@ -50,3 +50,20 @@ Schedule::command('so:daily-report')->dailyAt('20:00')->timezone('Asia/Jakarta')
 
 // v1.15 — Financial report regeneration
 Schedule::call(fn() => \App\Models\FinancialReport::regenerateAll())->hourly();
+
+// ── v1.40 — Koreksi Operasional ────────────────────────────────────────
+// Consumer payment reminder harian H+4..H+10 + eskalasi H+11+
+Schedule::command('consumer-payment:send-reminders')
+    ->dailyAt('09:00')->timezone('Asia/Jakarta');
+
+// Akta kematian overdue check (threshold 2 minggu)
+Schedule::command('death-cert:check-overdue')
+    ->dailyAt('09:30')->timezone('Asia/Jakarta');
+
+// Stock opname reminder semester — 1 Januari & 1 Juli 08:00 WIB
+Schedule::command('stock:opname-reminder')
+    ->cron('0 8 1 1,7 *')->timezone('Asia/Jakarta');
+
+// Membership payment status: auto grace_period / inactive + reminder H-7/H-3/H-1
+Schedule::command('membership:check-payment-status')
+    ->dailyAt('06:00')->timezone('Asia/Jakarta');

@@ -10,7 +10,9 @@ import '../../auth/screens/unified_login_screen.dart';
 import '../../vendor/screens/vendor_attendance_screen.dart';
 import '../../kpi/screens/kpi_dashboard_screen.dart';
 import 'gallery_link_screen.dart';
+import 'photographer_daily_wages_screen.dart';
 import '../../wage/screens/my_wage_claims_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class TukangFotoDashboardScreen extends StatefulWidget {
   const TukangFotoDashboardScreen({super.key});
@@ -94,6 +96,30 @@ class _TukangFotoDashboardScreenState extends State<TukangFotoDashboardScreen> {
                       subtitle: const Text('Ajukan & lihat status upah per order'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWageClaimsScreen())),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // v1.40 — Upah Harian
+                  GlassWidget(
+                    borderRadius: 14,
+                    child: ListTile(
+                      leading: Icon(Icons.payments, color: _roleColor),
+                      title: const Text('Upah Harian', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Rincian upah per hari (banyak sesi)'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhotographerDailyWagesScreen())),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // v1.39 — Cuti & Izin
+                  GlassWidget(
+                    borderRadius: 14,
+                    child: ListTile(
+                      leading: Icon(Icons.event_available, color: _roleColor),
+                      title: const Text('Cuti & Izin Saya', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Request cuti/sakit/izin & lihat status'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
                     ),
                   ),
                   const SizedBox(height: 24),

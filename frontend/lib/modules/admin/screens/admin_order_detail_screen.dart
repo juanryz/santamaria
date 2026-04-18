@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
+import 'musician_sessions_screen.dart';
 
 class AdminOrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -76,6 +77,22 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
         title: _order?['order_number'] ?? 'Detail Order',
         accentColor: _roleColor,
         showBack: true,
+        actions: [
+          if (_order != null)
+            IconButton(
+              icon: const Icon(Icons.music_note, color: AppColors.brandAccent),
+              tooltip: 'Sesi Musisi',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MusicianSessionsScreen(
+                    orderId: widget.orderId,
+                    orderNumber: _order!['order_number'] ?? '-',
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

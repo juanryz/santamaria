@@ -9,6 +9,7 @@ import '../../auth/screens/unified_login_screen.dart';
 import 'security_incident_screen.dart';
 import 'security_key_screen.dart';
 import 'security_patrol_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class SecurityHomeScreen extends StatefulWidget {
   const SecurityHomeScreen({super.key});
@@ -126,6 +127,9 @@ class _SecurityHomeScreenState extends State<SecurityHomeScreen> {
                   }),
                   _menuTile(Icons.history, 'Riwayat Insiden', () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const SecurityIncidentScreen()));
+                  }),
+                  _menuTile(Icons.event_available, 'Cuti & Izin Saya', () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const MyLeavesScreen()));
                   }),
                 ],
               ),

@@ -13,6 +13,8 @@ import 'admin_fleet_management_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 import 'admin_documentation_screen.dart';
 import 'admin_master_data_screen.dart';
+import 'musician_wage_config_screen.dart';
+import 'cctv_management_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -237,6 +239,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         () => Navigator.push(context,
             MaterialPageRoute(
                 builder: (_) => const AdminDocumentationScreen())),
+      ),
+      // v1.40 — Tarif musisi per orang per sesi
+      (
+        Icons.music_note_outlined,
+        'Tarif Musisi',
+        'Rate per orang per sesi (musisi/MC/paduan suara)',
+        () => Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => const MusicianWageConfigScreen())),
+      ),
+      // v1.39 — CCTV cameras
+      (
+        Icons.videocam_outlined,
+        'Kelola CCTV',
+        'Daftar kamera & stream URL',
+        () => Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => const CctvManagementScreen())),
       ),
     ];
 

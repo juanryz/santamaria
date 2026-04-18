@@ -13,6 +13,8 @@ import '../../auth/screens/unified_login_screen.dart';
 import '../../hrd/screens/kpi_management_screen.dart';
 import 'owner_fleet_map_screen.dart';
 import 'owner_command_screen.dart';
+import 'death_cert_overview_screen.dart';
+import 'cctv_monitoring_screen.dart';
 
 class OwnerDashboardScreen extends StatefulWidget {
   const OwnerDashboardScreen({super.key});
@@ -317,6 +319,96 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
             _buildStatsGrid(),
             const SizedBox(height: 20),
             _buildQuickInfo(),
+            const SizedBox(height: 16),
+            // v1.39 — CCTV Monitoring
+            GlassWidget(
+              borderRadius: 16,
+              padding: const EdgeInsets.all(14),
+              borderColor: AppColors.roleOwner.withValues(alpha: 0.25),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const CctvMonitoringScreen()),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.roleOwner.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.videocam,
+                        color: AppColors.roleOwner, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('CCTV Monitoring',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary)),
+                        Text('Live feed kantor, gudang, Lafiore, parkiran',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: AppColors.textHint),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            // v1.40 — Monitoring Akta Kematian
+            GlassWidget(
+              borderRadius: 16,
+              padding: const EdgeInsets.all(14),
+              borderColor: const Color(0xFF8E44AD).withValues(alpha: 0.25),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const DeathCertOverviewScreen()),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8E44AD).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.fact_check,
+                        color: Color(0xFF8E44AD), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Monitoring Akta Kematian',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary)),
+                        Text('Lihat progress + deteksi overdue 2 minggu',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: AppColors.textHint),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
             _buildFleetMap(),
             const SizedBox(height: 20),

@@ -13,6 +13,7 @@ import '../../auth/screens/unified_login_screen.dart';
 import 'driver_trip_log_screen.dart';
 import '../../attendance/screens/clock_in_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   const DriverDashboardScreen({super.key});
@@ -213,6 +214,14 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
             heroTag: 'trip_log',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverTripLogScreen())),
             child: const Icon(Icons.receipt_long, color: Colors.white, size: 20),
+          ),
+          const SizedBox(height: 8),
+          // v1.39 — My Leaves (self-service cuti/sakit/izin)
+          FloatingActionButton.small(
+            backgroundColor: Colors.indigo,
+            heroTag: 'my_leaves',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
+            child: const Icon(Icons.event_available, color: Colors.white, size: 20),
           ),
         ],
       ),

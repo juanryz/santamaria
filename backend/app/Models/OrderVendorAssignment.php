@@ -27,6 +27,32 @@ class OrderVendorAssignment extends Model
         'requested_by_consumer' => 'boolean',
     ];
 
+    /**
+     * v1.40 — Enforce: pemuka agama tidak bisa internal, fee wajib 0.
+     * Keluarga bayar langsung ke pemuka agama.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (OrderVendorAssignment $assignment) {
+            $roleCode = $assignment->vendorRole?->role_code
+                ?? optional(VendorRoleMaster::find($assignment->vendor_role_id))->role_code;
+
+            if ($roleCode === 'pemuka_agama') {
+                // Force external source — tidak ada pool internal SM
+                if ($assignment->source === 'internal') {
+                    $assignment->source = 'external_consumer';
+                    $assignment->user_id = null;
+                }
+                // Fee di-handle di order_billing_items, bukan di assignment ini.
+                // Marker note untuk UI:
+                $marker = '[v1.40] Keluarga bayar langsung ke pemuka agama (fee SM=0).';
+                if (!str_contains((string) $assignment->notes, '[v1.40]')) {
+                    $assignment->notes = trim(((string) $assignment->notes) . "\n" . $marker);
+                }
+            }
+        });
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

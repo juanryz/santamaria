@@ -92,6 +92,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::put('/roles/{id}',                 [\App\Http\Controllers\SuperAdmin\RoleController::class, 'update']);
             Route::delete('/roles/{id}',              [\App\Http\Controllers\SuperAdmin\RoleController::class, 'destroy']);
             Route::get('/roles/{slug}/users',         [\App\Http\Controllers\SuperAdmin\RoleController::class, 'users']);
+
+            // v1.39 — CCTV cameras CRUD
+            Route::get('/cctv',                       [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'index']);
+            Route::post('/cctv',                      [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'store']);
+            Route::get('/cctv/{id}',                  [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'show']);
+            Route::put('/cctv/{id}',                  [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'update']);
+            Route::delete('/cctv/{id}',               [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'destroy']);
+            Route::put('/cctv/{id}/toggle',           [\App\Http\Controllers\SuperAdmin\CctvManagementController::class, 'toggleActive']);
         });
 
     // ── Authenticated + non-viewer ────────────────────────────────────────────
@@ -125,6 +133,9 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::post('/orders/{orderId}/deliveries/{deliveryId}/confirm', [\App\Http\Controllers\Consumer\FamilyDeliveryController::class, 'confirm']);
             // Invoice PDF (consumer — after order completed/paid)
             Route::get('/orders/{id}/invoice',                      [\App\Http\Controllers\InvoiceController::class, 'generatePdf']);
+            // v1.39 — Consumer self-view membership
+            Route::get('/me/membership',                            [\App\Http\Controllers\Consumer\MyMembershipController::class, 'show']);
+            Route::get('/me/membership/payments',                   [\App\Http\Controllers\Consumer\MyMembershipController::class, 'payments']);
         });
 
         // ── Service Officer ───────────────────────────────────────────────────
@@ -407,6 +418,9 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             // v1.36 — Owner Commands
             Route::get('/commands',                       [\App\Http\Controllers\Owner\CommandController::class,        'index']);
             Route::post('/commands',                      [\App\Http\Controllers\Owner\CommandController::class,        'store']);
+            // v1.39 — CCTV live feed
+            Route::get('/cctv/cameras',                   [\App\Http\Controllers\Owner\CctvController::class,           'index']);
+            Route::get('/cctv/cameras/{id}/live',         [\App\Http\Controllers\Owner\CctvController::class,           'live']);
             Route::get('/commands/{id}',                  [\App\Http\Controllers\Owner\CommandController::class,        'show']);
             Route::delete('/commands/{id}',               [\App\Http\Controllers\Owner\CommandController::class,        'cancel']);
         });
@@ -432,6 +446,11 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::put('/employees/{id}/reset-password',  [\App\Http\Controllers\HRD\EmployeeController::class,         'resetPassword']);
             Route::put('/employees/{id}/deactivate',      [\App\Http\Controllers\HRD\EmployeeController::class,         'deactivate']);
             Route::put('/employees/{id}/activate',        [\App\Http\Controllers\HRD\EmployeeController::class,         'activate']);
+            // v1.39 — Employee leaves (HRD approve/reject)
+            Route::get('/leaves',                          [\App\Http\Controllers\EmployeeLeaveController::class,        'hrdIndex']);
+            Route::put('/leaves/{id}/approve',             [\App\Http\Controllers\EmployeeLeaveController::class,        'approve']);
+            Route::put('/leaves/{id}/reject',              [\App\Http\Controllers\EmployeeLeaveController::class,        'reject']);
+            Route::get('/leaves/summary',                  [\App\Http\Controllers\EmployeeLeaveController::class,        'summary']);
             // v1.16 — KPI
             Route::get('/kpi/metrics',                    [\App\Http\Controllers\KPI\KpiController::class,              'metricsIndex']);
             Route::post('/kpi/metrics',                   [\App\Http\Controllers\KPI\KpiController::class,              'metricsStore']);
@@ -493,6 +512,14 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/fuel-logs',                              [\App\Http\Controllers\Gudang\VehicleMaintenanceController::class, 'fuelLogs']);
             Route::put('/fuel-logs/{id}/validate',                [\App\Http\Controllers\Gudang\VehicleMaintenanceController::class, 'validateFuel']);
             Route::put('/fuel-logs/{id}/reject',                  [\App\Http\Controllers\Gudang\VehicleMaintenanceController::class, 'rejectFuel']);
+            // v1.39 — Stock damage & lost (barcode-driven)
+            Route::post('/stock/scan',                             [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'scan']);
+            Route::get('/stock/damage-logs',                       [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'damageIndex']);
+            Route::post('/stock/damage-logs',                      [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'damageReport']);
+            Route::put('/stock/damage-logs/{id}/resolve',          [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'damageResolve']);
+            Route::get('/stock/lost-logs',                         [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'lostIndex']);
+            Route::post('/stock/lost-logs',                        [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'lostReport']);
+            Route::put('/stock/lost-logs/{id}/deduct-penalty',     [\App\Http\Controllers\Gudang\StockDamageLostController::class, 'lostDeductPenalty']);
         });
 
         // ── v1.14 — SO extras ─────────────────────────────────────────────────
@@ -521,6 +548,24 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::post('/orders/{orderId}/acceptance-letter/sign-saksi', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'signSaksi']);
             Route::get('/orders/{orderId}/acceptance-letter/pdf', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'exportPdf']);
             Route::post('/orders/{orderId}/acceptance-letter/send-wa', [\App\Http\Controllers\ServiceOfficer\AcceptanceLetterController::class, 'sendWa']);
+
+            // v1.40 — Custom service phases (multi rumah duka)
+            Route::get('/orders/{orderId}/phases',                [\App\Http\Controllers\ServiceOfficer\CustomServicePhaseController::class, 'index']);
+            Route::post('/orders/{orderId}/phases',               [\App\Http\Controllers\ServiceOfficer\CustomServicePhaseController::class, 'store']);
+            Route::put('/orders/{orderId}/phases/{phaseId}',      [\App\Http\Controllers\ServiceOfficer\CustomServicePhaseController::class, 'update']);
+            Route::delete('/orders/{orderId}/phases/{phaseId}',   [\App\Http\Controllers\ServiceOfficer\CustomServicePhaseController::class, 'destroy']);
+
+            // v1.39 — Out-of-city transport (Rp 25k/km fix)
+            Route::get('/orders/{orderId}/out-of-city',           [\App\Http\Controllers\ServiceOfficer\OutOfCityTransportController::class, 'show']);
+            Route::put('/orders/{orderId}/out-of-city',           [\App\Http\Controllers\ServiceOfficer\OutOfCityTransportController::class, 'update']);
+
+            // v1.39 — Consumer Memberships (SO daftar, kelola)
+            Route::get('/memberships',                             [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'index']);
+            Route::post('/memberships',                            [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'store']);
+            Route::get('/memberships/{id}',                        [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'show']);
+            Route::put('/memberships/{id}',                        [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'update']);
+            Route::put('/memberships/{id}/cancel',                 [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'cancel']);
+            Route::get('/memberships/check/by-user',               [\App\Http\Controllers\ServiceOfficer\MembershipController::class, 'checkByUser']);
         });
 
         // ── Tukang Jaga ───────────────────────────────────────────────────────────────
@@ -699,6 +744,13 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::get('/me',                                     [\App\Http\Controllers\Attendance\DailyAttendanceController::class, 'myHistory']);
         });
 
+        // ── v1.39 — Employee self-service leaves (semua karyawan internal) ──
+        Route::prefix('me/leaves')->group(function () {
+            Route::get('/',                                       [\App\Http\Controllers\EmployeeLeaveController::class, 'myLeaves']);
+            Route::post('/',                                      [\App\Http\Controllers\EmployeeLeaveController::class, 'requestLeave']);
+            Route::put('/{id}/cancel',                            [\App\Http\Controllers\EmployeeLeaveController::class, 'cancelLeave']);
+        });
+
         // ── v1.25 — Stock-aware package selection ────────────────────────
         Route::get('/packages/stock-check',                       [\App\Http\Controllers\PackageStockController::class, 'index']);
 
@@ -711,5 +763,77 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
         Route::get('/funeral-homes/{id}',     [\App\Http\Controllers\Admin\FuneralHomeController::class, 'show']);
         Route::get('/cemeteries',             [\App\Http\Controllers\Admin\CemeteryController::class, 'index']);
         Route::get('/cemeteries/{id}',        [\App\Http\Controllers\Admin\CemeteryController::class, 'show']);
+
+        // ══════════════════════════════════════════════════════════════════
+        // v1.40 — Koreksi Operasional
+        // ══════════════════════════════════════════════════════════════════
+
+        // ── v1.40 — Tukang Foto: Upah Harian (bukan per order) ───────────
+        Route::prefix('tukang-foto')->group(function () {
+            Route::get('/daily-wages/me',                     [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'myWages']);
+            Route::get('/daily-wages/{id}',                   [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'show']);
+            Route::post('/daily-wages/attach-order',          [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'attachOrder']);
+        });
+
+        // Purchasing finalize + bayar upah harian tukang foto
+        Route::middleware(['role:purchasing,super_admin'])->prefix('purchasing')->group(function () {
+            Route::get('/photographer-wages/pending',         [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'pending']);
+            Route::put('/photographer-wages/{id}/finalize',   [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'finalize']);
+            Route::put('/photographer-wages/{id}/pay',        [\App\Http\Controllers\TukangFoto\DailyWageController::class, 'markPaid']);
+
+            // v1.39 — Membership Payments (Purchasing input iuran bulanan)
+            Route::get('/membership-payments',                [\App\Http\Controllers\Purchasing\MembershipPaymentController::class, 'index']);
+            Route::post('/membership-payments',               [\App\Http\Controllers\Purchasing\MembershipPaymentController::class, 'store']);
+            Route::get('/membership-payments/due',            [\App\Http\Controllers\Purchasing\MembershipPaymentController::class, 'dueList']);
+
+            // v1.39 — Petty Cash (kas kecil kantor)
+            Route::get('/petty-cash',                         [\App\Http\Controllers\Purchasing\PettyCashController::class, 'index']);
+            Route::get('/petty-cash/balance',                 [\App\Http\Controllers\Purchasing\PettyCashController::class, 'balance']);
+            Route::post('/petty-cash',                        [\App\Http\Controllers\Purchasing\PettyCashController::class, 'store']);
+            Route::get('/petty-cash/summary',                 [\App\Http\Controllers\Purchasing\PettyCashController::class, 'summary']);
+        });
+
+        // ── v1.40 — Stock Opname Semester (Gudang / Super Admin / Dekor) ─
+        Route::middleware(['role:gudang,super_admin,dekor'])->prefix('stock-opname')->group(function () {
+            Route::get('/sessions',                           [\App\Http\Controllers\Gudang\StockOpnameController::class, 'index']);
+            Route::post('/sessions/start',                    [\App\Http\Controllers\Gudang\StockOpnameController::class, 'start']);
+            Route::put('/sessions/{sessionId}/items/{itemId}/count', [\App\Http\Controllers\Gudang\StockOpnameController::class, 'countItem']);
+            Route::post('/sessions/{sessionId}/reconcile',    [\App\Http\Controllers\Gudang\StockOpnameController::class, 'reconcile']);
+        });
+
+        // ── v1.40 — Musician Sessions (Admin/Super Admin) ────────────────
+        Route::middleware(['role:super_admin,hrd,purchasing'])->prefix('admin/musicians')->group(function () {
+            Route::get('/wage-configs',                       [\App\Http\Controllers\Admin\MusicianSessionController::class, 'wageConfigs']);
+            Route::post('/wage-configs',                      [\App\Http\Controllers\Admin\MusicianSessionController::class, 'storeWageConfig']);
+            Route::put('/wage-configs/{id}',                  [\App\Http\Controllers\Admin\MusicianSessionController::class, 'updateWageConfig']);
+        });
+        Route::middleware(['role:super_admin,service_officer,purchasing'])
+            ->prefix('admin/orders/{orderId}/musician-sessions')->group(function () {
+                Route::get('/',                               [\App\Http\Controllers\Admin\MusicianSessionController::class, 'sessions']);
+                Route::post('/',                              [\App\Http\Controllers\Admin\MusicianSessionController::class, 'storeSession']);
+                Route::put('/{sessionId}',                    [\App\Http\Controllers\Admin\MusicianSessionController::class, 'updateSession']);
+                Route::delete('/{sessionId}',                 [\App\Http\Controllers\Admin\MusicianSessionController::class, 'deleteSession']);
+            });
+
+        // ── v1.40 — Inter-location Stock Transfer (termasuk titipan kacang) ─
+        Route::middleware(['role:gudang,super_admin,dekor,purchasing'])->prefix('stock-transfers')->group(function () {
+            Route::get('/',                                   [\App\Http\Controllers\RoleStock\StockTransferController::class, 'index']);
+            Route::post('/',                                  [\App\Http\Controllers\RoleStock\StockTransferController::class, 'request']);
+            Route::put('/{id}/approve',                       [\App\Http\Controllers\RoleStock\StockTransferController::class, 'approve']);
+            Route::put('/{id}/mark-transferred',              [\App\Http\Controllers\RoleStock\StockTransferController::class, 'markTransferred']);
+            Route::put('/{id}/receive',                       [\App\Http\Controllers\RoleStock\StockTransferController::class, 'confirmReceive']);
+            Route::put('/{id}/cancel',                        [\App\Http\Controllers\RoleStock\StockTransferController::class, 'cancel']);
+        });
+
+        // ── v1.40 — Akta Kematian Progress (granular) ────────────────────
+        Route::middleware(['role:petugas_akta,super_admin'])->prefix('petugas-akta/progress')->group(function () {
+            Route::get('/{orderId}',                          [\App\Http\Controllers\PetugasAkta\DeathCertProgressController::class, 'show']);
+            Route::post('/{orderId}/start',                   [\App\Http\Controllers\PetugasAkta\DeathCertProgressController::class, 'start']);
+            Route::post('/{orderId}/advance',                 [\App\Http\Controllers\PetugasAkta\DeathCertProgressController::class, 'advanceStage']);
+            Route::post('/{orderId}/hand-over',               [\App\Http\Controllers\PetugasAkta\DeathCertProgressController::class, 'handToFamily']);
+        });
+        Route::middleware(['role:owner,hrd,super_admin,viewer'])->prefix('petugas-akta')->group(function () {
+            Route::get('/progress',                           [\App\Http\Controllers\PetugasAkta\DeathCertProgressController::class, 'overview']);
+        });
     });
 });

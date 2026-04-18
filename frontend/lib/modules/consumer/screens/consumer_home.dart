@@ -8,6 +8,7 @@ import '../../../shared/widgets/glass_widget.dart';
 import 'consumer_create_order_screen.dart';
 import 'order_tracking_screen.dart';
 import 'chat_screen.dart';
+import 'my_membership_screen.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -289,6 +290,57 @@ class _ConsumerHomeState extends State<ConsumerHome> {
                                 ),
                                 const Icon(Icons.chevron_right,
                                     color: AppColors.brandPrimary, size: 20),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // v1.39 — Kartu Anggota
+                          GlassWidget(
+                            borderRadius: 20,
+                            blurSigma: 16,
+                            tint: AppColors.brandSecondary.withValues(alpha: 0.08),
+                            borderColor: AppColors.brandSecondary.withValues(alpha: 0.22),
+                            padding: const EdgeInsets.all(18),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MyMembershipScreen()),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.brandSecondary
+                                        .withValues(alpha: 0.15),
+                                  ),
+                                  child: const Icon(Icons.card_membership,
+                                      color: AppColors.brandSecondary, size: 22),
+                                ),
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Keanggotaan Saya',
+                                          style: TextStyle(
+                                              color: AppColors.textPrimary,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15)),
+                                      SizedBox(height: 2),
+                                      Text(
+                                          'Lihat status, iuran & riwayat pembayaran',
+                                          style: TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    color: AppColors.brandSecondary, size: 20),
                               ],
                             ),
                           ),

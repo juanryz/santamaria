@@ -10,6 +10,7 @@ import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../../shared/screens/role_inventory_screen.dart';
 import '../../../shared/screens/role_fulfillment_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'dekor_daily_package_screen.dart';
 
@@ -333,6 +334,17 @@ class _DekorDashboardScreenState extends State<DekorDashboardScreen> {
                     }
                   }
                 : null,
+          ),
+          const SizedBox(height: 8),
+          // v1.39 — Cuti & Izin
+          _buildQuickAccessCard(
+            icon: Icons.event_available,
+            title: 'Cuti & Izin Saya',
+            subtitle: 'Request & lihat status cuti/sakit/izin',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyLeavesScreen()),
+            ),
           ),
         ],
       ),

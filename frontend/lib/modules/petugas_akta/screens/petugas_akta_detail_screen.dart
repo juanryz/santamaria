@@ -7,6 +7,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import 'package:dio/dio.dart';
+import 'death_cert_progress_screen.dart';
 
 class PetugasAktaDetailScreen extends StatefulWidget {
   final String orderId;
@@ -339,6 +340,18 @@ class _PetugasAktaDetailScreenState extends State<PetugasAktaDetailScreen> {
         title: widget.orderNumber,
         accentColor: _roleColor,
         showBack: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.timeline, color: _roleColor),
+            tooltip: 'Progress v1.40',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DeathCertProgressScreen(orderId: widget.orderId),
+              ),
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

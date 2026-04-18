@@ -9,6 +9,7 @@ import '../../../shared/widgets/glass_status_badge.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import '../../../providers/auth_provider.dart';
 import '../../auth/screens/unified_login_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 import '../../vendor/screens/vendor_attendance_screen.dart';
 import '../../kpi/screens/kpi_dashboard_screen.dart';
 import '../../wage/screens/my_wage_claims_screen.dart';
@@ -98,6 +99,15 @@ class _MusisiHomeScreenState extends State<MusisiHomeScreen>
         title: 'Musisi / MC',
         accentColor: _roleColor,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.event_available,
+                color: AppColors.brandPrimary),
+            tooltip: 'Cuti & Izin Saya',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyLeavesScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: AppColors.brandPrimary),
             onPressed: () => Navigator.push(

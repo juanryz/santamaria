@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Kuesioner Owner — Santa Maria Funeral Organizer v1.39</title>
+<style>
+@page {
+  size: A4;
+  margin: 20mm 18mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 11pt;
+  line-height: 1.5;
+  color: #222;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 15mm;
+  background: #fff;
+}
+
+.cover {
+  text-align: center;
+  padding: 40mm 0;
+  page-break-after: always;
+}
+
+.cover h1 {
+  font-size: 28pt;
+  margin: 0 0 10mm;
+  color: #1E3A5F;
+  letter-spacing: 0.5pt;
+}
+
+.cover .subtitle {
+  font-size: 14pt;
+  color: #4A7BA7;
+  margin-bottom: 20mm;
+  font-style: italic;
+}
+
+.cover .meta {
+  font-size: 11pt;
+  margin-top: 30mm;
+  line-height: 2;
+}
+
+.cover .meta strong {
+  color: #1E3A5F;
+}
+
+.cover .instructions {
+  margin-top: 20mm;
+  padding: 6mm;
+  border: 1px solid #C5A55A;
+  background: #FAF8F5;
+  text-align: left;
+  font-size: 10pt;
+  line-height: 1.6;
+}
+
+h2.section {
+  font-size: 16pt;
+  color: #1E3A5F;
+  border-bottom: 2px solid #C5A55A;
+  padding-bottom: 4mm;
+  margin-top: 12mm;
+  margin-bottom: 6mm;
+  page-break-before: always;
+  page-break-after: avoid;
+}
+
+h2.section:first-of-type {
+  page-break-before: auto;
+}
+
+h3.subsection {
+  font-size: 13pt;
+  color: #4A7BA7;
+  margin-top: 8mm;
+  margin-bottom: 4mm;
+  padding: 2mm 3mm;
+  background: #F0F4F8;
+  border-left: 4px solid #4A7BA7;
+  page-break-after: avoid;
+}
+
+.question {
+  margin-bottom: 8mm;
+  page-break-inside: avoid;
+}
+
+.question .num {
+  display: inline-block;
+  background: #1E3A5F;
+  color: #fff;
+  padding: 1mm 3mm;
+  border-radius: 3mm;
+  font-weight: bold;
+  font-size: 10pt;
+  margin-right: 3mm;
+  min-width: 18mm;
+  text-align: center;
+}
+
+.question .text {
+  font-weight: 600;
+  display: inline;
+}
+
+.question .hint {
+  display: block;
+  font-size: 9.5pt;
+  color: #666;
+  font-style: italic;
+  margin: 2mm 0 3mm 22mm;
+}
+
+.answer-box {
+  margin-left: 22mm;
+  margin-top: 3mm;
+  border: 1px solid #999;
+  padding: 3mm;
+  min-height: 18mm;
+  background: #FDFDFD;
+}
+
+.answer-box.small {
+  min-height: 10mm;
+}
+
+.answer-box.large {
+  min-height: 30mm;
+}
+
+.answer-box .line {
+  border-bottom: 1px dotted #999;
+  height: 6mm;
+}
+
+.info-box {
+  margin: 4mm 0;
+  padding: 4mm;
+  background: #FFF8E7;
+  border-left: 4px solid #C5A55A;
+  font-size: 10pt;
+}
+
+.info-box strong {
+  color: #8B6914;
+}
+
+.signature-section {
+  margin-top: 30mm;
+  page-break-inside: avoid;
+}
+
+.signature-section table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.signature-section td {
+  width: 50%;
+  padding: 4mm;
+  text-align: center;
+  vertical-align: top;
+}
+
+.signature-section .sig-line {
+  border-bottom: 1px solid #222;
+  height: 25mm;
+  margin: 4mm 0;
+}
+
+.toc {
+  margin: 8mm 0;
+  padding: 4mm;
+  background: #F8F8F8;
+  border: 1px solid #ccc;
+}
+
+.toc h3 {
+  margin-top: 0;
+  color: #1E3A5F;
+}
+
+.toc ol {
+  margin: 2mm 0 0 4mm;
+  padding: 0;
+}
+
+.toc li {
+  padding: 1mm 0;
+  font-size: 10pt;
+}
+
+.footer-note {
+  margin-top: 8mm;
+  padding: 3mm;
+  background: #F0F0F0;
+  font-size: 9pt;
+  color: #555;
+  border-left: 3px solid #888;
+}
+
+@media print {
+  body {
+    padding: 0;
+  }
+  .cover {
+    padding: 30mm 10mm;
+  }
+  .no-print {
+    display: none;
+  }
+}
+
+@media screen {
+  .print-button {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background: #1E3A5F;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .print-button:hover {
+    background: #2E5A8F;
+  }
+}
+</style>
+</head>
+<body>
+
+<button class="print-button no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <h1>KUESIONER OWNER</h1>
+  <div class="subtitle">Santa Maria Funeral Organizer</div>
+  <div class="subtitle">Sistem Operasional Digital v1.39</div>
+
+  <div class="meta">
+    <strong>Total Pertanyaan:</strong> 80+ item konfirmasi<br>
+    <strong>Estimasi Waktu Pengisian:</strong> 60–90 menit<br>
+    <strong>Tanggal Cetak:</strong> ____________________<br>
+    <strong>Diisi Oleh:</strong> ____________________
+  </div>
+
+  <div class="instructions">
+    <strong>Petunjuk Pengisian:</strong>
+    <ol>
+      <li>Isi setiap kotak jawaban dengan tulisan yang jelas.</li>
+      <li>Jika belum yakin, tulis <em>"Nanti dikonfirmasi"</em> di kotak jawaban.</li>
+      <li>Jika pertanyaan tidak relevan, tulis <em>"Tidak berlaku"</em>.</li>
+      <li>Untuk pertanyaan yang butuh list/tabel, gunakan kertas tambahan bila perlu.</li>
+      <li>Jawaban akan digunakan untuk finalisasi spec v1.40 dan implementasi aplikasi.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h3>Daftar Isi</h3>
+  <ol>
+    <li>BAGIAN A — Paket &amp; Pricing</li>
+    <li>BAGIAN B — SDM &amp; Karyawan</li>
+    <li>BAGIAN C — Operasional Lapangan</li>
+    <li>BAGIAN D — Membership Detail</li>
+    <li>BAGIAN E — Transport Luar Kota</li>
+    <li>BAGIAN F — Google Drive &amp; Foto Dokumentasi</li>
+    <li>BAGIAN G — Barcode &amp; Inventaris</li>
+    <li>BAGIAN H — CCTV &amp; Security</li>
+    <li>BAGIAN I — Obituary &amp; Marketing</li>
+    <li>BAGIAN J — Keuangan &amp; Payment</li>
+    <li>BAGIAN K — Akta Kematian</li>
+    <li>BAGIAN L — HRD &amp; Cuti</li>
+    <li>BAGIAN M — Tukang Angkat Peti &amp; Coffin</li>
+    <li>BAGIAN N — Device &amp; Sistem</li>
+    <li>BAGIAN O — AI Anomaly Detection</li>
+  </ol>
+</div>
+
+<!-- BAGIAN A — PAKET & PRICING -->
+<h2 class="section">BAGIAN A — PAKET & PRICING</h2>
+
+<div class="info-box">
+  <strong>Konteks:</strong> Santa Maria memiliki dua service type (Anggota vs Non-Anggota)
+  yang orthogonal dengan paket layanan (Dasar / Premium / Eksklusif / dll).
+  Anggota membayar iuran bulanan dan mendapat harga paket lebih rendah.
+</div>
+
+<div class="question">
+  <span class="num">A1</span>
+  <span class="text">Iuran keanggotaan per bulan: <strong>berapa rupiah?</strong></span>
+  <div class="hint">Contoh: Rp 50.000/bulan, Rp 100.000/bulan. Apakah berbeda per tingkat keanggotaan?</div>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">A2</span>
+  <span class="text">Profit margin Anggota vs Non-Anggota: berapa persen bedanya?</span>
+  <div class="hint">Contoh: Non-Anggota margin 40%, Anggota margin 15% (beda 25%)</div>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">A3</span>
+  <span class="text">Detail paket yang tersedia: sebutkan nama paket + harga untuk Anggota + harga Non-Anggota.</span>
+  <div class="hint">Contoh: Paket Dasar (Anggota Rp 5 jt, Non-Anggota Rp 7 jt); Paket Premium (Anggota Rp X, Non-Anggota Rp Y); dst.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">A4</span>
+  <span class="text">Isi/konten paket — untuk paket yang sama, <strong>apa bedanya</strong> antara Anggota dan Non-Anggota?</span>
+  <div class="hint">Contoh: Paket Dasar Non-Anggota dapat peti type A, Anggota dapat peti type B. Atau: makanan untuk Anggota lebih sedikit porsi.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">A5</span>
+  <span class="text">Add-on/layanan tambahan: sebutkan semua add-on + harganya (untuk Anggota dan Non-Anggota jika beda).</span>
+  <div class="hint">Contoh: Embalming Rp 500rb, Foto Dokumentasi Rp 300rb, Bus Lelayu Rp 1 jt, Dekorasi Extra Rp X, dll.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">A6</span>
+  <span class="text">Apakah ada <strong>paket spesifik Anggota only</strong> atau <strong>Non-Anggota only</strong>?</span>
+  <div class="hint">Misal ada paket "Anggota Gold" yang hanya bisa dibeli anggota aktif.</div>
+  <div class="answer-box small"></div>
+</div>
+
+<!-- BAGIAN B — SDM -->
+<h2 class="section">BAGIAN B — SDM &amp; Karyawan</h2>
+
+<h3 class="subsection">B.1 Service Officer (SO)</h3>
+
+<div class="question">
+  <span class="num">B1</span>
+  <span class="text">Jam kerja SO 24 jam — <strong>bagaimana detail shift</strong>?</span>
+  <div class="hint">Shift pagi (07–19) dan malam (19–07)? Atau 3 shift? Atau on-call tanpa shift?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">B2</span>
+  <span class="text">Target harian/bulanan SO: berapa order, berapa visit, berapa prospek?</span>
+  <div class="hint">Contoh: minimal 3 visit prospek/minggu, 10 order/bulan.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">B3</span>
+  <span class="text">Commission/bonus SO: formula seperti apa?</span>
+  <div class="hint">Contoh: % dari profit, bonus flat per order, bonus per service_type, dll.</div>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.2 Gudang</h3>
+
+<div class="question">
+  <span class="num">B4</span>
+  <span class="text">Jumlah staff gudang saat ini berapa orang? Ada shift?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">B5</span>
+  <span class="text">Ada barang consignment (titipan supplier yang baru dibayar saat dipakai)?</span>
+  <div class="hint">Jika ya, jenis barang apa dan dari supplier mana?</div>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.3 Kantor (Super Admin)</h3>
+
+<div class="question">
+  <span class="num">B6</span>
+  <span class="text">List barang apa saja yang disimpan di <strong>KANTOR</strong> (dipegang Super Admin)?</span>
+  <div class="hint">Biasanya item darurat / administratif. Contoh: amplop putih, lilin cadangan, kartu ucapan, dll.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">B7</span>
+  <span class="text">List barang apa saja yang disimpan di <strong>GUDANG</strong>?</span>
+  <div class="hint">Barang berat, stok dalam jumlah banyak, peti, sound, dll.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">B8</span>
+  <span class="text">List barang apa saja yang disimpan di <strong>LAFIORE</strong>?</span>
+  <div class="hint">Khusus bunga, vas, bahan dekorasi.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<h3 class="subsection">B.4 Lafiore (Dekor)</h3>
+
+<div class="question">
+  <span class="num">B9</span>
+  <span class="text">Jumlah staff Lafiore berapa orang? Komposisi (designer, tukang rakit, dll)?</span>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.5 Driver</h3>
+
+<div class="question">
+  <span class="num">B10</span>
+  <span class="text">Jumlah driver per lokasi: <strong>Gudang: ___ orang, Kantor: ___ orang, Lafiore: ___ orang</strong>.</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">B11</span>
+  <span class="text">Driver "tidak ada libur tetap" — apakah ada rotasi rest day setelah X hari kerja berturut?</span>
+  <div class="hint">Misal: 6 hari kerja → 1 hari off bergilir, tapi tetap on-call jika darurat.</div>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.6 Pemuka Agama</h3>
+
+<div class="question">
+  <span class="num">B12</span>
+  <span class="text">Berapa pemuka agama dari setiap agama yang bermitra dengan SM?</span>
+  <div class="hint">Katolik: ___, Protestan: ___, Buddha: ___, Konghucu: ___, Hindu: ___, Islam: ___, lainnya: ___</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">B13</span>
+  <span class="text">Nominal honor pemuka agama per order (beda per agama? Beda per paket?)</span>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.7 Tukang Foto</h3>
+
+<div class="question">
+  <span class="num">B14</span>
+  <span class="text">Nominal upah tukang foto per order: berapa?</span>
+  <div class="hint">Apakah fixed? Atau beda berdasar durasi prosesi / jumlah hari?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">B15</span>
+  <span class="text">Rencana rekrut tukang foto freelance: berapa orang target? Kriteria?</span>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.8 Tukang Jaga</h3>
+
+<div class="question">
+  <span class="num">B16</span>
+  <span class="text">Makan &amp; minum tukang jaga: SM sediakan atau bawa sendiri?</span>
+  <div class="hint">Jika SM sediakan, apakah dihitung masuk upah atau biaya terpisah?</div>
+  <div class="answer-box"></div>
+</div>
+
+<h3 class="subsection">B.9 Musisi</h3>
+
+<div class="question">
+  <span class="num">B17</span>
+  <span class="text">Jumlah musisi/grup musik langganan berapa?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">B18</span>
+  <span class="text">Alat musik (keyboard, mic, speaker, gitar): SM sediakan atau musisi bawa sendiri?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">B19</span>
+  <span class="text">Upah musisi per order: berapa?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<h3 class="subsection">B.10 Security</h3>
+
+<div class="question">
+  <span class="num">B20</span>
+  <span class="text">Jumlah security + detail shift (pagi, malam, 24 jam)?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN C — OPERASIONAL LAPANGAN -->
+<h2 class="section">BAGIAN C — Operasional Lapangan</h2>
+
+<div class="question">
+  <span class="num">C1</span>
+  <span class="text">Durasi standar prosesi per agama (berapa hari / berapa jam):</span>
+  <div class="hint">
+    Katolik: ___<br>
+    Protestan: ___<br>
+    Buddha: ___<br>
+    Konghucu: ___<br>
+    Hindu: ___<br>
+    Islam: ___<br>
+    Lainnya: ___
+  </div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">C2</span>
+  <span class="text">Kegiatan harian di rumah duka yang perlu di-track:</span>
+  <div class="hint">Contoh: misa pagi, misa siang, misa malam, doa rosario, pemberkatan, dll. Tiap agama punya agenda berbeda.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<!-- BAGIAN D — MEMBERSHIP -->
+<h2 class="section">BAGIAN D — Membership Detail</h2>
+
+<div class="info-box">
+  <strong>Konteks v1.39:</strong> Anggota = subscription bulanan.
+  Default grace period 30 hari, inactive setelah 60 hari.
+</div>
+
+<div class="question">
+  <span class="num">D1</span>
+  <span class="text">Grace period setelah telat bayar: <strong>30 hari sesuai, atau beda?</strong></span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">D2</span>
+  <span class="text">Status inactive setelah: <strong>60 hari sesuai, atau beda?</strong></span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">D3</span>
+  <span class="text">Reminder pembayaran iuran ke consumer: kirim kapan?</span>
+  <div class="hint">Contoh: H-7 + H-3 + H-1 sebelum jatuh tempo, lalu hari jatuh tempo.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">D4</span>
+  <span class="text">Metode pembayaran iuran bulanan: cash, transfer, atau auto-debit?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">D5</span>
+  <span class="text">Batas umur consumer untuk jadi Anggota: min/max?</span>
+  <div class="hint">Apakah anak-anak bisa jadi anggota? Lansia masih bisa daftar?</div>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">D6</span>
+  <span class="text">Anggota sekeluarga: satu membership atau terpisah per orang?</span>
+  <div class="hint">Contoh: suami+istri+anak — 1 iuran untuk semua atau masing-masing?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">D7</span>
+  <span class="text">Pre-need: Anggota mendaftar supaya nanti saat meninggal dapat harga Anggota. Apakah ada syarat <strong>minimum durasi keanggotaan</strong> sebelum bisa claim?</span>
+  <div class="hint">Contoh: minimal sudah jadi anggota 3 bulan baru berhak harga anggota saat meninggal.</div>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN E — TRANSPORT LUAR KOTA -->
+<h2 class="section">BAGIAN E — Transport Luar Kota</h2>
+
+<div class="info-box">
+  <strong>Konteks v1.39:</strong> Rate Rp 25.000/km fix dari titik penjemputan.
+</div>
+
+<div class="question">
+  <span class="num">E1</span>
+  <span class="text">Rate Rp 25.000/km include apa saja?</span>
+  <div class="hint">BBM saja? Atau termasuk driver + tol + makan driver?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">E2</span>
+  <span class="text">Titik 0 km dihitung dari mana?</span>
+  <div class="hint">Dari kantor SM? Dari gudang? Dari kota Semarang?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">E3</span>
+  <span class="text">Jenazah luar pulau (butuh pesawat/kapal): bagaimana flow biayanya?</span>
+  <div class="hint">Contoh: Jakarta → Surabaya, atau luar negeri → Semarang. Tiket pesawat ditanggung siapa?</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">E4</span>
+  <span class="text">Apakah ada <strong>biaya menginap driver</strong> jika perjalanan > 1 hari?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">E5</span>
+  <span class="text">Jenazah dari luar negeri: SM layani? Jika ya, biaya tambahan apa?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN F — GOOGLE DRIVE & FOTO -->
+<h2 class="section">BAGIAN F — Google Drive &amp; Foto Dokumentasi</h2>
+
+<div class="info-box">
+  <strong>Konteks v1.39:</strong> Google Drive dari workspace SM (bukan pribadi tukang foto).
+  Deadline upload 3 jam setelah prosesi selesai.
+</div>
+
+<div class="question">
+  <span class="num">F1</span>
+  <span class="text">Quota storage per order: unlimited atau batasan?</span>
+  <div class="hint">Google Workspace punya quota. Estimasi foto per order berapa GB?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">F2</span>
+  <span class="text">Retention foto di Google Drive: disimpan selamanya atau auto-delete setelah X bulan?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">F3</span>
+  <span class="text">Selain foto, apakah terima <strong>video</strong>? Format apa saja (MP4, MOV, RAW)?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">F4</span>
+  <span class="text">Multi tukang foto per order: semua share folder yang sama, atau masing-masing punya subfolder?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">F5</span>
+  <span class="text">Akses consumer setelah lunas: full akses download, atau hanya preview online?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN G — BARCODE & INVENTARIS -->
+<h2 class="section">BAGIAN G — Barcode &amp; Inventaris</h2>
+
+<div class="info-box">
+  <strong>Konteks v1.39:</strong> Setiap stock_item punya unique barcode.
+  Saat rusak → scan barcode → input kerusakan + estimasi kerugian.
+</div>
+
+<div class="question">
+  <span class="num">G1</span>
+  <span class="text">Tipe barcode: QR Code, Code128, EAN13, atau yang lain?</span>
+  <div class="hint">QR Code bisa menyimpan lebih banyak data; Code128 / EAN13 format industrial standar.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">G2</span>
+  <span class="text">Printer barcode: sudah punya atau perlu beli? Thermal atau regular printer?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">G3</span>
+  <span class="text">Barcode ditempel di mana (fisik): setiap item (per unit) atau per batch?</span>
+  <div class="hint">Contoh: setiap botol cologne ditempel individual, atau per kardus?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">G4</span>
+  <span class="text">Nominal potongan dari upah tukang jaga jika barang hilang: persentase dari nilai barang, atau flat?</span>
+  <div class="hint">Contoh: 50% dari nilai barang, maks 1 shift upah.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">G5</span>
+  <span class="text">Proses banding tukang jaga jika merasa bukan tanggung jawabnya: bagaimana?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN H — CCTV & SECURITY -->
+<h2 class="section">BAGIAN H — CCTV &amp; Security</h2>
+
+<div class="question">
+  <span class="num">H1</span>
+  <span class="text">Jumlah kamera CCTV per lokasi:</span>
+  <div class="hint">
+    Kantor: ___ kamera<br>
+    Gudang: ___ kamera<br>
+    Lafiore: ___ kamera<br>
+    Parkiran: ___ kamera<br>
+    Total: ___
+  </div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">H2</span>
+  <span class="text">Resolusi kamera minimum (HD/Full HD/4K)?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">H3</span>
+  <span class="text">Retention rekaman CCTV: berapa hari disimpan?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">H4</span>
+  <span class="text">IP Camera sistem: brand dan model apa?</span>
+  <div class="hint">Supaya integrasi API/RTSP bisa dibuat dengan benar.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">H5</span>
+  <span class="text">Owner akses CCTV dari luar kantor (internet): perlu atau on-premise only?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">H6</span>
+  <span class="text">Auto-alert anomali (motion detection di jam tertutup, dll): perlu?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN I — OBITUARY & MARKETING -->
+<h2 class="section">BAGIAN I — Obituary &amp; Marketing</h2>
+
+<div class="question">
+  <span class="num">I1</span>
+  <span class="text">Template design berita duka di landing page: sudah ada referensi atau dibuat dari awal?</span>
+  <div class="hint">Contoh: landscape card dengan foto + bingkai hitam + teks duka.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">I2</span>
+  <span class="text">Foto almarhum untuk obituary: ambil dari mana (KTP consumer, family upload, atau tukang foto)?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">I3</span>
+  <span class="text">Approval Owner untuk obituary: via app (notifikasi + tombol approve) atau via email?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">I4</span>
+  <span class="text">Obituary dipublish ke mana saja selain landing page?</span>
+  <div class="hint">Facebook? Instagram? Grup WhatsApp? Manual share?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">I5</span>
+  <span class="text">Data pribadi di obituary: boleh tampil apa saja?</span>
+  <div class="hint">Nama, umur, tanggal wafat, nama anak/istri, tempat pemakaman? Ada yang sensitif?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">I6</span>
+  <span class="text">Testimonial di landing page: sampel pertanyaan yang SO tanyakan ke keluarga?</span>
+  <div class="hint">Misal: "Bagaimana pengalaman Anda?", "Apa yang paling berkesan?"</div>
+  <div class="answer-box large"></div>
+</div>
+
+<!-- BAGIAN J — KEUANGAN -->
+<h2 class="section">BAGIAN J — Keuangan &amp; Payment</h2>
+
+<div class="question">
+  <span class="num">J1</span>
+  <span class="text">SOP keterlambatan bayar consumer (lewat 3 hari): denda? Reminder via WA/telepon? Blacklist?</span>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">J2</span>
+  <span class="text">Siapa yang pegang <strong>petty cash fisik</strong> di kantor?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">J3</span>
+  <span class="text">Frekuensi rekonsiliasi petty cash: harian / mingguan?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">J4</span>
+  <span class="text">Jika consumer belum lunas tapi akta kematian keburu jadi, akta disimpan di mana sampai lunas?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">J5</span>
+  <span class="text">Format nomor invoice (prefix, digit): ada standar?</span>
+  <div class="hint">Contoh: INV-2026/04/001 atau SM-INV-20260418-001</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">J6</span>
+  <span class="text">Nomor rekening SM (untuk transfer consumer): bank apa, atas nama apa?</span>
+  <div class="hint">Akan ditampilkan di app consumer + WA template. Multiple rekening?</div>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN K — AKTA KEMATIAN -->
+<h2 class="section">BAGIAN K — Akta Kematian</h2>
+
+<div class="question">
+  <span class="num">K1</span>
+  <span class="text">Jangka waktu maksimal internal untuk proses akta (dari terima dokumen → akta jadi)?</span>
+  <div class="hint">Sebagai internal SLA, meskipun tergantung Dukcapil.</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">K2</span>
+  <span class="text">Urutan instansi yang dikunjungi petugas akta (Kelurahan → Kecamatan → Dukcapil?)</span>
+  <div class="hint">Sebutkan instansi dan urutan kunjungan berdasar pengalaman.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">K3</span>
+  <span class="text">Progress akta yang di-expose ke consumer: semua tahap atau hanya milestone?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">K4</span>
+  <span class="text">Foto bukti kunjungan instansi (oleh petugas akta): wajib geofenced?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN L — HRD & CUTI -->
+<h2 class="section">BAGIAN L — HRD, Cuti &amp; Gaji</h2>
+
+<div class="question">
+  <span class="num">L1</span>
+  <span class="text">Gaji pokok per role: butuh list konkrit untuk perhitungan payroll.</span>
+  <div class="hint">
+    Super Admin: Rp ___<br>
+    Owner: Rp ___<br>
+    Service Officer: Rp ___<br>
+    Gudang: Rp ___<br>
+    Purchasing: Rp ___<br>
+    Driver: Rp ___<br>
+    Lafiore (Dekor): Rp ___<br>
+    HRD: Rp ___<br>
+    Security: Rp ___<br>
+    Petugas Akta: Rp ___
+  </div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">L2</span>
+  <span class="text">Formula bonus (tahunan/kuartalan):</span>
+  <div class="hint">Contoh: bonus = (profit tahunan × 5%) ÷ jumlah karyawan, atau bonus fixed 1x gaji pokok saat target tercapai.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">L3</span>
+  <span class="text">Progression teguran SP1 → SP2 → SP3 → PHK: trigger apa?</span>
+  <div class="hint">Misal: SP1 setelah 3 pelanggaran severity=medium, SP2 setelah ada SP1 lagi, dst.</div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">L4</span>
+  <span class="text">Kuota cuti tahunan per role? THR berapa kali gaji?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">L5</span>
+  <span class="text">Sick leave: perlu surat dokter setelah berapa hari?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<div class="question">
+  <span class="num">L6</span>
+  <span class="text">Cuti melahirkan (durasi), cuti menikah (durasi), cuti khusus lainnya?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN M — TUKANG ANGKAT PETI -->
+<h2 class="section">BAGIAN M — Tukang Angkat Peti &amp; Coffin</h2>
+
+<div class="question">
+  <span class="num">M1</span>
+  <span class="text">Mapping ukuran peti → jumlah tukang angkat yang finalized (draft v1.39 di bawah, konfirmasi atau koreksi):</span>
+  <div class="hint">
+    Kecil (150–180 cm): <strong>4 orang</strong><br>
+    Standard (180–200 cm): <strong>4–6 orang</strong><br>
+    Medium (200–215 cm): <strong>6 orang</strong><br>
+    Besar (215–230 cm): <strong>6–8 orang</strong><br>
+    Jumbo (230+ cm): <strong>8–10 orang</strong>
+  </div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">M2</span>
+  <span class="text">Peti custom/oversize (di luar kategori): bagaimana flow pemilihan jumlah angkat?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">M3</span>
+  <span class="text">Upah koordinator tukang angkat peti: fixed per order atau persentase dari total upah anak buah?</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN N — DEVICE & SISTEM -->
+<h2 class="section">BAGIAN N — Device &amp; Sistem</h2>
+
+<div class="question">
+  <span class="num">N1</span>
+  <span class="text">Proses reset device binding (1 account 1 device): jika HP karyawan hilang/rusak, bagaimana?</span>
+  <div class="hint">Super Admin reset via dashboard otomatis, atau butuh berita acara kehilangan?</div>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">N2</span>
+  <span class="text">Cooldown setelah reset device: langsung bisa login atau butuh waktu X menit/jam?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">N3</span>
+  <span class="text">Kuota data HP kantor: SM sediakan kartu SIM + paket data, atau karyawan pakai kartu pribadi?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">N4</span>
+  <span class="text">Backup database harian: disimpan ke mana?</span>
+  <div class="hint">Cloudflare R2 (recommended), Google Drive, atau on-premise server?</div>
+  <div class="answer-box"></div>
+</div>
+
+<!-- BAGIAN O — AI ANOMALY -->
+<h2 class="section">BAGIAN O — AI Anomaly Detection</h2>
+
+<div class="question">
+  <span class="num">O1</span>
+  <span class="text">Anomali apa saja yang Owner mau di-alert oleh AI?</span>
+  <div class="hint">
+    □ Order volume spike/drop > 30%<br>
+    □ BBM efficiency drop > 20%<br>
+    □ KPI karyawan turun drastis<br>
+    □ Payment delay unusual<br>
+    □ Stock anomali<br>
+    □ Login mencurigakan<br>
+    □ Geolocation karyawan anomali<br>
+    □ Lainnya: ____________________
+  </div>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">O2</span>
+  <span class="text">Format alert ke Owner: push notif di app, email, WA, atau semua?</span>
+  <div class="answer-box"></div>
+</div>
+
+<div class="question">
+  <span class="num">O3</span>
+  <span class="text">Jam aktif AI alert: 24 jam atau hanya jam kerja?</span>
+  <div class="answer-box small"></div>
+</div>
+
+<!-- CATATAN TAMBAHAN -->
+<h2 class="section">CATATAN TAMBAHAN</h2>
+
+<div class="question">
+  <span class="num">+1</span>
+  <span class="text">Hal lain yang belum ditanyakan tapi penting untuk diketahui developer:</span>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">+2</span>
+  <span class="text">Fitur tambahan yang ingin ditambahkan ke aplikasi:</span>
+  <div class="answer-box large"></div>
+</div>
+
+<div class="question">
+  <span class="num">+3</span>
+  <span class="text">Referensi aplikasi/sistem yang jadi inspirasi (jika ada):</span>
+  <div class="answer-box"></div>
+</div>
+
+<!-- SIGNATURE -->
+<div class="signature-section">
+  <h2 class="section" style="page-break-before: auto;">Tanda Tangan</h2>
+
+  <p>Dengan ini saya menyatakan bahwa jawaban di atas adalah kebijakan resmi
+  CV Santa Maria Funeral Organizer dan dapat digunakan sebagai acuan untuk
+  pengembangan aplikasi.</p>
+
+  <table>
+    <tr>
+      <td>
+        <strong>Owner / Direktur</strong>
+        <div class="sig-line"></div>
+        Nama: ____________________<br>
+        Tanggal: ____________________
+      </td>
+      <td>
+        <strong>Saksi / Developer</strong>
+        <div class="sig-line"></div>
+        Nama: ____________________<br>
+        Tanggal: ____________________
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="footer-note">
+  <strong>Dokumen internal</strong> — CV Santa Maria Funeral Organizer.
+  Kuesioner v1.39 untuk finalisasi spec v1.40.
+  Rahasia perusahaan, dilarang disebarluaskan tanpa izin.
+</div>
+
+</body>
+</html>

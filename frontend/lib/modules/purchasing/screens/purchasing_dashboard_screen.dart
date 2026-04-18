@@ -8,7 +8,11 @@ import 'package:provider/provider.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import 'payment_verify_screen.dart';
 import 'purchasing_wage_approval_screen.dart';
+import 'photographer_wage_approval_screen.dart';
+import 'membership_payment_screen.dart';
+import 'petty_cash_screen.dart';
 import '../../wage/screens/wage_management_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class PurchasingDashboardScreen extends StatefulWidget {
   const PurchasingDashboardScreen({super.key});
@@ -127,6 +131,14 @@ class _PurchasingDashboardScreenState extends State<PurchasingDashboardScreen> {
       {'icon': Icons.shopping_cart, 'label': 'Approval Pengadaan', 'color': Colors.blue, 'screen': null},
       {'icon': Icons.people, 'label': 'Upah Tim Lapangan', 'color': Colors.green, 'screen': const PurchasingWageApprovalScreen()},
       {'icon': Icons.account_balance_wallet, 'label': 'Kelola Upah Layanan', 'color': const Color(0xFF3A5E8C), 'screen': const WageManagementScreen()},
+      // v1.40 — Upah harian tukang foto
+      {'icon': Icons.camera_alt, 'label': 'Upah Harian Foto', 'color': const Color(0xFF8E44AD), 'screen': const PhotographerWageApprovalScreen()},
+      // v1.39 — Iuran Membership
+      {'icon': Icons.card_membership, 'label': 'Iuran Membership', 'color': Colors.teal, 'screen': const MembershipPaymentScreen()},
+      // v1.39 — Kas Kecil
+      {'icon': Icons.account_balance_wallet, 'label': 'Kas Kecil Kantor', 'color': Colors.amber[700], 'screen': const PettyCashScreen()},
+      // v1.39 — Self-service cuti
+      {'icon': Icons.event_available, 'label': 'Cuti & Izin Saya', 'color': Colors.indigo, 'screen': const MyLeavesScreen()},
       {'icon': Icons.store, 'label': 'Bayar Supplier', 'color': Colors.purple, 'screen': null},
       {'icon': Icons.receipt_long, 'label': 'Laporan Tagihan', 'color': Colors.teal, 'screen': null},
       {'icon': Icons.bar_chart, 'label': 'Laporan Bulanan', 'color': Colors.indigo, 'screen': null},

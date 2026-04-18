@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/repositories/so_repository.dart';
 import '../../../providers/auth_provider.dart';
@@ -58,6 +60,14 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
   List<dynamic> _addons = [];
   bool _isLoadingPackages = true;
 
+  // v1.39 — Membership detection (auto-apply Anggota vs Non-Anggota pricing)
+  final _api = ApiClient();
+  Timer? _membershipDebounce;
+  bool _isCheckingMembership = false;
+  bool _isMember = false;
+  Map<String, dynamic>? _memberData;
+  String _serviceType = 'non_anggota'; // 'anggota' | 'non_anggota'
+
   // ── Step 2 — SAL ─────────────────────────────────────────────────────────────
   final _step2Key = GlobalKey<FormState>();
   final _pjNameController = TextEditingController();
@@ -88,6 +98,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
 
   @override
   void dispose() {
+    _membershipDebounce?.cancel();
     _pageController.dispose();
     _picNameController.dispose();
     _picPhoneController.dispose();
@@ -103,6 +114,91 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
     _pjNameController.dispose();
     _officerNameController.dispose();
     super.dispose();
+  }
+
+  // ── v1.39 — Membership auto-detect ──────────────────────────────────
+  void _onPhoneChanged(String phone) {
+    _membershipDebounce?.cancel();
+    if (phone.trim().length < 8) {
+      setState(() {
+        _memberData = null;
+        _isMember = false;
+        _serviceType = 'non_anggota';
+      });
+      return;
+    }
+    _membershipDebounce = Timer(const Duration(milliseconds: 600), () {
+      _checkMembership(phone.trim());
+    });
+  }
+
+  Future<void> _checkMembership(String phone) async {
+    setState(() {
+      _isCheckingMembership = true;
+    });
+    try {
+      final res = await _api.dio
+          .get('/so/memberships/check/by-user', queryParameters: {'phone': phone});
+      if (!mounted) return;
+      if (res.data['success'] == true) {
+        final data = res.data['data'] as Map<String, dynamic>;
+        final isMember = data['is_member'] == true;
+        setState(() {
+          _isMember = isMember;
+          _memberData = isMember
+              ? data['membership'] as Map<String, dynamic>?
+              : null;
+          _serviceType = isMember ? 'anggota' : 'non_anggota';
+        });
+      }
+    } catch (_) {
+      // silent
+    } finally {
+      if (mounted) setState(() => _isCheckingMembership = false);
+    }
+  }
+
+  Widget _membershipBadge() {
+    if (_memberData == null) return const SizedBox.shrink();
+    final status = (_memberData!['status'] ?? '').toString();
+    final number = _memberData!['membership_number'] ?? '-';
+    final qualifies = status == 'active' || status == 'grace_period';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: qualifies
+              ? [AppColors.brandPrimary, AppColors.brandAccent]
+              : [AppColors.textHint, AppColors.textSecondary],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(qualifies ? '✓ Anggota Aktif' : '⚠ Anggota Nonaktif',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+                Text(
+                    '$number · ${qualifies ? "Harga ANGGOTA berlaku" : "Harga Non-Anggota"}',
+                    style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadData() async {
@@ -234,6 +330,10 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
             double.tryParse(_durationController.text.trim()) ?? 3,
         // final_price tidak dikirim — dihitung otomatis dari billing_item_master
         'payment_method': _paymentMethod,
+        // v1.39 — service tier (Anggota vs Non-Anggota)
+        'service_type': _serviceType,
+        if (_isMember && _memberData != null)
+          'consumer_membership_id': _memberData!['id'],
         'pj_name': _pjNameController.text.trim(),
         'pj_signature': pjBase64,
         'officer_name': _officerNameController.text.trim(),
@@ -388,7 +488,29 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
               icon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
               validator: (v) => v!.trim().isEmpty ? 'Wajib diisi' : null,
+              onChanged: _onPhoneChanged,
             ),
+            if (_isCheckingMembership)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Memeriksa keanggotaan...',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textHint)),
+                  ],
+                ),
+              )
+            else if (_memberData != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _membershipBadge(),
+              ),
             const SizedBox(height: 12),
             _dropdownField<String>(
               label: 'Hubungan dengan Almarhum *',
@@ -522,12 +644,30 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
                           color: AppColors.textHint, size: 20),
                     ),
                     items: _packages.map((pkg) {
-                      final price = _currency.format(
-                          double.tryParse(pkg['base_price'].toString()) ?? 0);
+                      // v1.39 — pilih harga sesuai service_type
+                      final basePrice = double.tryParse(
+                              pkg['base_price']?.toString() ?? '0') ??
+                          0;
+                      final priceAnggota = double.tryParse(
+                              pkg['price_anggota']?.toString() ?? '0') ??
+                          0;
+                      final priceNonAnggota = double.tryParse(
+                              pkg['price_non_anggota']?.toString() ?? '0') ??
+                          0;
+                      final effectivePrice = _serviceType == 'anggota' &&
+                              priceAnggota > 0
+                          ? priceAnggota
+                          : (priceNonAnggota > 0
+                              ? priceNonAnggota
+                              : basePrice);
+                      final price = _currency.format(effectivePrice);
+                      final tier = _serviceType == 'anggota'
+                          ? ' (Anggota)'
+                          : '';
                       return DropdownMenuItem<String>(
                         value: pkg['id'],
                         child: Text(
-                          '${pkg['name']} — $price',
+                          '${pkg['name']} — $price$tier',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 14),
                         ),
@@ -885,6 +1025,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
+    ValueChanged<String>? onChanged,
   }) =>
       TextFormField(
         controller: controller,
@@ -896,6 +1037,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
           prefixIcon: Icon(icon, color: AppColors.textHint, size: 20),
         ),
         validator: validator,
+        onChanged: onChanged,
       );
 
   Widget _dropdownField<T>({

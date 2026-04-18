@@ -125,6 +125,9 @@ class OrderController extends Controller
             'so_notes'                 => 'nullable|string',
             'estimated_guests'         => 'nullable|integer|min:0',
             'pin'                      => 'nullable|string|min:4',
+            // v1.39 — service tier
+            'service_type'             => 'nullable|in:anggota,non_anggota',
+            'consumer_membership_id'   => 'nullable|uuid|exists:consumer_memberships,id',
         ]);
 
         return DB::transaction(function () use ($request) {

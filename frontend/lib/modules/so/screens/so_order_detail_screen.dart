@@ -10,6 +10,8 @@ import 'so_acceptance_letter_screen.dart';
 import '../../../core/services/whatsapp_service.dart';
 import '../../tukang_foto/screens/gallery_link_screen.dart';
 import 'so_amendment_screen.dart';
+import 'custom_service_phases_screen.dart';
+import 'out_of_city_transport_screen.dart';
 
 class SOOrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -430,6 +432,30 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
                   backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
                   onPressed: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => SoAcceptanceLetterScreen(orderId: widget.orderId),
+                  )),
+                ),
+                // v1.40 — Layanan Custom (multi rumah duka)
+                ActionChip(
+                  avatar: const Icon(Icons.place, size: 18, color: AppColors.roleSO),
+                  label: const Text('Layanan Custom', style: TextStyle(fontSize: 12)),
+                  backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => CustomServicePhasesScreen(
+                      orderId: widget.orderId,
+                      orderNumber: order['order_number'] ?? '-',
+                    ),
+                  )),
+                ),
+                // v1.39 — Transport Luar Kota
+                ActionChip(
+                  avatar: const Icon(Icons.directions_bus, size: 18, color: AppColors.roleSO),
+                  label: const Text('Transport Luar Kota', style: TextStyle(fontSize: 12)),
+                  backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => OutOfCityTransportScreen(
+                      orderId: widget.orderId,
+                      orderNumber: order['order_number'] ?? '-',
+                    ),
                   )),
                 ),
                 // v1.17 — WA deep link ke keluarga

@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../shared/widgets/glass_app_bar.dart';
 import '../../../shared/widgets/glass_widget.dart';
 import 'tukang_jaga_shift_detail_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class TukangJagaHomeScreen extends StatefulWidget {
   const TukangJagaHomeScreen({super.key});
@@ -101,6 +102,16 @@ class _TukangJagaHomeScreenState extends State<TukangJagaHomeScreen> {
         title: 'Jadwal Shift Saya',
         accentColor: _roleColor,
         showBack: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.event_available, color: _roleColor),
+            tooltip: 'Cuti & Izin Saya',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyLeavesScreen()),
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

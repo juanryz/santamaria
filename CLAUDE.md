@@ -1,5 +1,5 @@
 # SANTA MARIA FUNERAL ORGANIZER — MASTER VIBE CODING PROMPT
-# Version 1.27 | Complete System Specification for AI-Assisted Development
+# Version 1.39 | Complete System Specification for AI-Assisted Development
 
 ---
 
@@ -15104,6 +15104,2781 @@ Akun nonaktif             → "Akun Anda dinonaktifkan. Hubungi admin."
 Terlalu banyak percobaan  → "Terlalu banyak percobaan. Coba lagi dalam X detik."
 Belum verifikasi          → "Akun belum diverifikasi."
 ```
+
+---
+
+# SANTA MARIA — PATCH v1.38
+# SO-Mandatory Order Input, Visit Deadline 30+30 min, Service Type Anggota/Non-Anggota, SO Rotation, Critical Bug Consolidation
+
+---
+
+## PERUBAHAN FUNDAMENTAL v1.38
+
+### A. INPUT ORDER — WAJIB MELALUI SO (DEPRECATE CONSUMER SELF-ORDER)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  SEMUA ORDER WAJIB DIINPUT OLEH SO                                    ║
+║                                                                       ║
+║  Consumer TIDAK bisa lagi input order sendiri via app.                ║
+║  Channel order hanya 3:                                               ║
+║    - SO Lapangan (field)                                              ║
+║    - SO Kantor (office)                                               ║
+║    - SO via telepon/WA (masih diinput SO ke app)                      ║
+║                                                                       ║
+║  Consumer app tetap ada untuk:                                        ║
+║    ✓ Terima link tracking order                                       ║
+║    ✓ Tanda tangan Surat Penerimaan Layanan (SAL)                      ║
+║    ✓ Approve amendment                                                ║
+║    ✓ Konfirmasi barang diterima                                       ║
+║    ✓ Lihat & bayar invoice                                            ║
+║    ✓ Akses dokumen setelah lunas                                      ║
+║    ✗ TIDAK bisa buat order baru                                       ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Perubahan schema:**
+```sql
+-- orders.created_by_so_channel: HAPUS nilai 'consumer_self'
+ALTER TABLE orders
+  ALTER COLUMN created_by_so_channel TYPE VARCHAR(20),
+  ALTER COLUMN created_by_so_channel SET DEFAULT 'field';
+-- Nilai valid sekarang: 'field', 'office', 'phone_wa'
+-- Data lama dengan 'consumer_self' → migrate ke 'phone_wa' atau SO terkait
+
+-- Tambah kolom:
+ALTER TABLE orders ADD COLUMN input_source ENUM(
+  'so_field_visit',      -- SO datang langsung ke keluarga
+  'so_office_walkin',    -- keluarga datang ke kantor
+  'so_phone',            -- keluarga telepon → SO input
+  'so_whatsapp'          -- keluarga via WA → SO input
+) NOT NULL DEFAULT 'so_phone';
+```
+
+**Endpoint deprecated:**
+```
+❌ DEPRECATED (v1.38):
+POST /consumer/orders                              -- hapus/disable
+POST /consumer/orders/walkin                       -- tidak pernah ada
+POST /consumer/orders/{id}/acceptance-letter       -- KEEP (consumer masih isi SAL)
+
+✅ TETAP DIPAKAI:
+POST /so/orders                                    -- SO buat order
+POST /so/orders/walkin                             -- SO kantor walk-in
+```
+
+**Consumer app adjustment:**
+```dart
+// lib/features/consumer/screens/consumer_home.dart — PERKAYA
+// Hapus tombol "Pesan Layanan Baru"
+// Ganti dengan tombol "Hubungi Customer Service"
+//   → wa.me/628112714440 dengan template:
+//     "Halo Santa Maria, saya ingin memesan layanan pemakaman.
+//      Nama almarhum: [___]
+//      Lokasi: [___]
+//      Saya bisa dihubungi di nomor ini."
+// Consumer yang sudah punya order aktif tetap lihat tracking + bayar seperti biasa
+```
+
+---
+
+### B. SO WAJIB HADIR FISIK KE KELUARGA — DEADLINE 30 + 30 MENIT
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  SLA VISIT SO                                                         ║
+║                                                                       ║
+║  Order masuk (di-input SO) → SO WAJIB sampai di lokasi keluarga      ║
+║  dalam 30 MENIT.                                                      ║
+║                                                                       ║
+║  Jika tidak bisa:                                                     ║
+║    → Request PERPANJANGAN 30 menit lagi (maksimal 1 kali)             ║
+║    → Total deadline: 60 menit                                         ║
+║                                                                       ║
+║  Lewat 60 menit tanpa arrive:                                         ║
+║    → Alarm HRD + Owner                                                ║
+║    → Sistem reassign ke SO lain (rotasi)                              ║
+║    → Catat hrd_violations (so_visit_timeout)                          ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Tabel baru `order_so_visits`:**
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+order_id UUID REFERENCES orders(id) ON DELETE CASCADE
+so_id UUID REFERENCES users(id)
+sequence SMALLINT NOT NULL DEFAULT 1          -- 1 = SO awal, 2+ = reassignment
+
+-- Lokasi target (rumah keluarga / RS / lokasi yang disepakati)
+target_address TEXT NOT NULL
+target_lat DECIMAL(10,7) NULLABLE
+target_lng DECIMAL(10,7) NULLABLE
+
+-- Deadline tracking
+assigned_at TIMESTAMP NOT NULL DEFAULT NOW()
+initial_deadline TIMESTAMP NOT NULL            -- assigned_at + 30 menit
+extended_deadline TIMESTAMP NULLABLE           -- assigned_at + 60 menit (jika extend)
+extension_requested_at TIMESTAMP NULLABLE
+extension_reason TEXT NULLABLE
+
+-- Arrival (foto selfie + geofence wajib, pakai photo_evidences v1.35)
+arrived_at TIMESTAMP NULLABLE
+arrival_photo_evidence_id UUID NULLABLE REFERENCES photo_evidences(id)
+arrival_distance_meters DECIMAL(10,2) NULLABLE
+
+-- Status
+status ENUM(
+  'assigned',           -- SO ditugaskan, belum berangkat
+  'en_route',           -- SO sudah tekan "berangkat"
+  'extended',           -- minta perpanjangan 30 menit
+  'arrived',            -- SO tiba (dalam deadline)
+  'arrived_late',       -- SO tiba setelah extended_deadline (tetap rekam)
+  'timeout',            -- tidak arrive sampai deadline → reassign
+  'reassigned'          -- SO ini di-skip, task pindah ke SO lain
+) DEFAULT 'assigned'
+
+timeout_at TIMESTAMP NULLABLE
+notes TEXT NULLABLE
+created_at TIMESTAMP
+updated_at TIMESTAMP
+
+INDEX: (order_id, sequence), (so_id, status), (initial_deadline)
+```
+
+**System thresholds baru:**
+```
+so_visit_initial_deadline_minutes = 30     -- deadline awal SO tiba
+so_visit_extension_minutes = 30            -- tambahan perpanjangan
+so_visit_max_extensions = 1                -- hanya boleh 1x extend
+```
+
+**API endpoints:**
+```
+POST   /so/orders/{id}/visit/depart            -- SO tekan "berangkat" → en_route
+POST   /so/orders/{id}/visit/request-extension -- minta perpanjangan 30 menit
+  Body: { reason: "macet di [lokasi]" }
+POST   /so/orders/{id}/visit/arrive            -- tiba (foto selfie + geofence wajib)
+  Body: { photo: file, latitude, longitude, device_id }
+GET    /so/orders/{id}/visit                   -- status visit saat ini + countdown
+```
+
+**Scheduler:**
+```php
+// Setiap menit — cek SO visit yang lewat deadline
+$schedule->command('so:check-visit-timeout')->everyMinute();
+
+// Logic:
+// 1. Cari order_so_visits.status IN ('assigned','en_route','extended')
+//    AND COALESCE(extended_deadline, initial_deadline) < NOW()
+// 2. Set status = 'timeout', timeout_at = now()
+// 3. Alarm HRD + Owner
+// 4. Auto-reassign: pilih SO lain (yang berbeda tipe layanan dari so_id sebelumnya
+//    tidak berlaku di sini — rotation hanya untuk assignment awal, bukan failover)
+// 5. Buat record order_so_visits baru dengan sequence++
+// 6. Insert hrd_violations (so_visit_timeout)
+```
+
+**Flutter screens:**
+```
+lib/features/service_officer/screens/
+  ├── so_home.dart                         -- PERKAYA:
+  │     -- Section "Visit Aktif" di atas:
+  │     -- Card merah kalau ada visit aktif:
+  │     │   "Order SM-XXX — Tiba di lokasi sebelum 08:45 (12 menit lagi)"
+  │     │   [📍 Berangkat] [🏠 Tiba] [⏱️ Minta Perpanjangan]
+  │
+  ├── so_visit_screen.dart                 -- BARU:
+  │     -- Map: lokasi SO saat ini vs lokasi keluarga
+  │     -- Timer countdown besar (warna: hijau > 15 menit, kuning < 15, merah overdue)
+  │     -- Tombol aksi sesuai status:
+  │     │   assigned → [Berangkat Sekarang]
+  │     │   en_route → [Saya Tiba] / [Minta Perpanjangan 30 menit]
+  │     │   extended → [Saya Tiba] (tidak bisa extend lagi)
+  │     -- Saat tekan "Saya Tiba":
+  │     │   - Buka kamera selfie (WAJIB, bukan galeri)
+  │     │   - Geofencing validation: dalam radius target
+  │     │   - Upload via photo_evidences
+  │     │   - Status → 'arrived'
+```
+
+---
+
+### C. SERVICE TYPE — ANGGOTA vs NON-ANGGOTA (REPLACE PAKET SEBAGAI CATEGORIZATION UTAMA)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  2 TIPE LAYANAN (TIDAK ADA "PAKET" LAGI SEBAGAI LABEL UTAMA)          ║
+║                                                                       ║
+║  1. ANGGOTA                                                           ║
+║     - Profit MARGIN LEBIH KECIL (loyalty/membership benefit)          ║
+║     - Harga lebih murah dari Non-Anggota                              ║
+║     - Syarat: consumer terdaftar sebagai Anggota Santa Maria          ║
+║                                                                       ║
+║  2. NON-ANGGOTA                                                       ║
+║     - Profit margin normal                                            ║
+║     - Harga standard                                                  ║
+║     - Consumer walk-in / baru / tidak jadi anggota                    ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+CATATAN:
+- "Paket" sebagai label konsumen DIHAPUS
+- Tabel `packages` TETAP dipakai sebagai CONTENT TEMPLATE internal
+  (untuk generate stok, peralatan, billing items) — tapi BUKAN label publik
+- Orderan dikategorisasi pertama oleh service_type,
+  content-nya tetap bisa variatif via package_id (internal only)
+```
+
+**Tabel baru `service_offerings` (menggantikan konsep "paket" konsumen):**
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+service_type ENUM('anggota','non_anggota') UNIQUE NOT NULL
+display_name VARCHAR(255) NOT NULL             -- "Layanan Anggota Santa Maria"
+description TEXT NULLABLE
+
+-- Harga
+base_price DECIMAL(15,2) NOT NULL              -- harga dasar layanan
+profit_margin_percent DECIMAL(5,2) NOT NULL   -- margin (anggota lebih kecil)
+
+-- Content template (opsional — link ke packages untuk items default)
+default_package_id UUID NULLABLE REFERENCES packages(id)
+
+is_active BOOLEAN DEFAULT TRUE
+sort_order INTEGER DEFAULT 0
+created_at TIMESTAMP
+updated_at TIMESTAMP
+```
+
+**Seed awal:**
+```
+anggota      | "Layanan Anggota Santa Maria"      | base: [konsultasi harga owner] | margin: [kecil]
+non_anggota  | "Layanan Non-Anggota Santa Maria"  | base: [konsultasi harga owner] | margin: [normal]
+```
+
+> ⏳ **PENDING OWNER:** Harga dasar dan margin persis untuk kedua tipe layanan.
+
+**Perubahan `orders` table:**
+```sql
+ALTER TABLE orders ADD COLUMN service_type ENUM('anggota','non_anggota') NOT NULL DEFAULT 'non_anggota';
+ALTER TABLE orders ADD COLUMN service_offering_id UUID REFERENCES service_offerings(id);
+-- package_id TETAP ADA untuk internal content template, tidak dihapus
+```
+
+**Perubahan `users` (consumer) — membership:**
+```sql
+-- Tabel baru membership consumer:
+CREATE TABLE consumer_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  membership_number VARCHAR(50) UNIQUE NOT NULL,   -- contoh: AGG-2026-0001
+  joined_at DATE NOT NULL,
+  expires_at DATE NULLABLE,                        -- NULL = seumur hidup
+  status ENUM('active','expired','suspended','cancelled') DEFAULT 'active',
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Saat SO input order:
+-- 1. Cari apakah consumer sudah punya consumer_memberships.status='active'
+-- 2. Jika ya → service_type = 'anggota'
+-- 3. Jika tidak → service_type = 'non_anggota'
+-- 4. SO bisa override manual (misal: keluarga anggota meninggal tapi order atas nama non-anggota)
+```
+
+**API endpoints:**
+```
+GET    /admin/master/service-offerings           -- list offerings (anggota, non_anggota)
+PUT    /admin/master/service-offerings/{id}      -- Super Admin update harga/margin
+
+GET    /admin/consumer-memberships               -- list anggota
+POST   /admin/consumer-memberships               -- daftarkan consumer sebagai anggota
+PUT    /admin/consumer-memberships/{id}          -- update status membership
+GET    /so/check-membership?phone=XXX             -- cek apakah consumer anggota (by HP)
+
+GET    /so/service-types                         -- list service_type + harga dasar
+```
+
+**Billing implication:**
+- `order_billings.grand_total` dihitung berdasarkan `service_type` + items
+- Discount/margin ditangani di service_offerings level
+- Item-level pricing tetap dari billing_item_master
+
+---
+
+### D. SO ROTATION — FAIR DISTRIBUTION PER SERVICE TYPE
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  ROTASI ASSIGNMENT SO PER TIPE LAYANAN                                ║
+║                                                                       ║
+║  Prinsip:                                                             ║
+║  - Jika SO A baru saja handle order ANGGOTA,                         ║
+║    order ANGGOTA BERIKUTNYA → diserahkan ke SO lain (bukan SO A)     ║
+║  - Logika sama untuk NON-ANGGOTA                                      ║
+║  - Rotation track per (user_id, service_type)                         ║
+║                                                                       ║
+║  Tujuan:                                                              ║
+║  - Distribusi rata antar SO                                           ║
+║  - Cegah SO monopoli tipe layanan tertentu                           ║
+║  - Fair commission/performance opportunity                            ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Tabel baru `so_assignment_history`:**
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+so_id UUID REFERENCES users(id)
+order_id UUID REFERENCES orders(id)
+service_type ENUM('anggota','non_anggota') NOT NULL
+assigned_at TIMESTAMP NOT NULL DEFAULT NOW()
+created_at TIMESTAMP
+
+INDEX: (so_id, service_type, assigned_at DESC)
+```
+
+**Algoritma auto-rotation (pseudocode):**
+```
+function assignSoForOrder(Order order, service_type):
+    // 1. Cari SO eligible:
+    //    - role = 'service_officer'
+    //    - is_active = true
+    //    - currently clock-in (daily_attendances.status IN ('present','late'))
+    //    - tidak sedang ada visit yang belum arrive (order_so_visits.status IN ('assigned','en_route','extended'))
+    eligibleSos = Users.where(role='service_officer', is_active=true)
+                       .whereClockedIn()
+                       .whereNotOnActiveVisit()
+
+    if eligibleSos.isEmpty:
+        // Fallback: assign ke SO yang clock-in (abaikan active visit)
+        eligibleSos = Users.where(role='service_officer', is_active=true)
+                           .whereClockedIn()
+
+    // 2. Untuk setiap SO, ambil last assignment timestamp untuk service_type ini
+    //    dari so_assignment_history
+    eligibleSos.map(so =>
+        lastAssigned = SoAssignmentHistory
+                          .where(so_id=so.id, service_type=service_type)
+                          .orderBy('assigned_at', 'desc')
+                          .first()
+        so.last_assigned_at_for_type = lastAssigned?.assigned_at ?? '1970-01-01'
+    )
+
+    // 3. Sort ASC — yang paling lama TIDAK dapat jenis ini → prioritas
+    eligibleSos.sortBy(so => so.last_assigned_at_for_type)
+
+    // 4. Pilih SO pertama
+    selectedSo = eligibleSos.first
+
+    // 5. Catat di so_assignment_history
+    SoAssignmentHistory.create({
+        so_id: selectedSo.id,
+        order_id: order.id,
+        service_type: service_type,
+        assigned_at: now()
+    })
+
+    // 6. Buat order_so_visits awal
+    OrderSoVisit.create({
+        order_id: order.id,
+        so_id: selectedSo.id,
+        sequence: 1,
+        target_address: order.address,
+        initial_deadline: now() + 30 minutes,
+        status: 'assigned'
+    })
+
+    return selectedSo
+```
+
+**Aturan bisnis:**
+```
+1. Rotation hanya untuk SO yang sedang CLOCK-IN. SO yang tidak bekerja hari itu tidak ikut rotasi.
+2. Rotation tidak memperhatikan SO channel (field vs office) — semua SO masuk rotation.
+3. Owner/Super Admin bisa OVERRIDE rotation dan assign manual ke SO tertentu.
+4. Jika SO pertama timeout (tidak arrive dalam 60 menit) → reassignment TIDAK masuk rotation
+   (failover berbeda dari fresh assignment; pakai SO next-available tanpa pengaruh history).
+5. SO history disimpan selamanya untuk audit.
+```
+
+**API endpoints:**
+```
+POST   /so/orders                            -- DIPERKAYA: saat create order, sistem otomatis rotate
+  // Logic internal: assignSoForOrder() dipanggil otomatis berdasarkan service_type
+
+GET    /admin/so-rotation-status             -- Super Admin: lihat last_assigned per SO per service_type
+POST   /admin/so-orders/{id}/manual-assign   -- Super Admin override: force assign ke SO tertentu
+  Body: { so_id: X, reason: "..." }
+```
+
+---
+
+## PART 2 — CONSOLIDATED CRITICAL BUG FIXES v1.38
+
+Patch ini juga menegaskan keputusan atas bug kritis hasil audit v1.37:
+
+### BUG-FIX 1: Version header (fixed di commit ini)
+- Header `Version 1.27` → `Version 1.38` (sudah di-update).
+
+### BUG-FIX 2: Role seed — hapus `admin` dan `finance`
+```
+KEPUTUSAN:
+- Role `admin` dihapus (sesuai v1.8 "admin diotomasi").
+- Role `finance` dihapus (sesuai v1.15 "finance → purchasing").
+- Seed role v1.29 dikoreksi:
+
+SEBELUM (v1.29):
+super_admin, consumer, service_officer, admin, gudang, finance, driver,
+dekor, konsumsi, supplier, owner, pemuka_agama, hrd, purchasing, viewer,
+tukang_foto, tukang_angkat_peti, tukang_jaga
+
+SESUDAH (v1.38):
+super_admin, consumer, service_officer, gudang, driver, dekor,
+supplier, owner, pemuka_agama, hrd, purchasing, viewer,
+tukang_foto, tukang_angkat_peti, tukang_jaga, petugas_akta, musisi, security
+
+Catatan:
+- `konsumsi` TIDAK di-seed sebagai role app (sesuai v1.36 — konsumsi = supplier eksternal).
+- Tambah 2 role baru v1.36: petugas_akta, musisi.
+- security dipertahankan sebagai role internal.
+```
+
+**Migration:**
+```php
+// database/migrations/2026_04_18_000001_v1_38_role_cleanup.php
+
+public function up(): void {
+    // 1. Hapus role admin & finance dari tabel roles
+    DB::table('roles')->whereIn('slug', ['admin', 'finance'])->delete();
+
+    // 2. Migrasi user lama:
+    //    - role='admin' → role='super_admin' (atau 'purchasing' sesuai bidang)
+    //    - role='finance' → role='purchasing'
+    DB::table('users')->where('role', 'admin')->update(['role' => 'super_admin']);
+    DB::table('users')->where('role', 'finance')->update(['role' => 'purchasing']);
+
+    // 3. Seed role baru yang belum ada
+    foreach (['petugas_akta', 'musisi'] as $slug) {
+        DB::table('roles')->updateOrInsert(
+            ['slug' => $slug],
+            ['label' => Str::headline($slug), 'is_system' => true, 'is_active' => true,
+             'created_at' => now(), 'updated_at' => now()]
+        );
+    }
+}
+```
+
+### BUG-FIX 3: Role `konsumsi` — BUKAN role app
+```
+KEPUTUSAN FINAL (sesuai v1.36):
+- Konsumsi = SUPPLIER EKSTERNAL (datang dari supplier luar, bukan karyawan SM)
+- Dihapus dari route guard, dari seed users test, dari VendorHome routing
+- field_attendances records lama dengan role='konsumsi' → archive (set is_legacy=true)
+- Koordinasi dengan supplier konsumsi dilakukan oleh Purchasing via e-Katalog / WA supplier sementara
+```
+
+**Migration impact:**
+```php
+// Remove from roles table
+DB::table('roles')->where('slug', 'konsumsi')->delete();
+
+// Users yang role='konsumsi' (jika ada) → ubah ke 'supplier' dengan supplier_type='temporary'
+DB::table('users')->where('role', 'konsumsi')->update([
+    'role' => 'supplier',
+    'supplier_type' => 'temporary'
+]);
+```
+
+**Route guard update:**
+```dart
+// lib/app/routing.dart — HAPUS case 'konsumsi'
+switch (user.role) {
+  // ... role lain
+  case 'dekor'           : → VendorHome(accentColor: AppColors.roleDekor)
+  // case 'konsumsi'     : → HAPUS (v1.38)
+  case 'pemuka_agama'    : → VendorHome(accentColor: AppColors.rolePemukaAgama)
+  // ...
+}
+```
+
+### BUG-FIX 4: Status order ENUM — v1.26 (17 status) AUTHORITATIVE
+
+```
+KEPUTUSAN FINAL:
+- ENUM 17 status di v1.26 adalah SATU-SATUNYA yang valid.
+- ENUM 6 status lama di v1.25 dianggap OBSOLETE.
+- `cancelled` TETAP ADA di ENUM (untuk kasus luar biasa / Super Admin emergency)
+  tapi TIDAK diekspos sebagai aksi di UI (sesuai v1.36 "tidak ada pembatalan").
+
+Status valid (17 total):
+  pending, awaiting_signature, so_review, confirmed, preparing, ready_to_dispatch,
+  driver_assigned, delivering_equipment, equipment_arrived, picking_up_body,
+  body_arrived, in_ceremony, heading_to_burial, burial_completed,
+  returning_equipment, completed, cancelled
+
+Auto-complete query update:
+  SEBELUM: WHERE driver_overall_status = 'all_done'
+  SESUDAH: WHERE status IN ('burial_completed', 'returning_equipment')
+             AND driver_overall_status = 'all_done'
+             AND NOW() > scheduled_at + estimated_duration_hours
+```
+
+### BUG-FIX 5: Tabel `order_checklists` — CANONICAL SCHEMA
+```sql
+CREATE TABLE order_checklists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  provider_role VARCHAR(50) NOT NULL,           -- role yang provide item ini
+  stock_item_id UUID NULLABLE REFERENCES stock_items(id),
+  item_name VARCHAR(255) NOT NULL,              -- snapshot dari stock_items/package_items
+  quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+  unit VARCHAR(50) DEFAULT 'pcs',
+  is_checked BOOLEAN DEFAULT FALSE,
+  checked_at TIMESTAMP NULLABLE,
+  checked_by UUID NULLABLE REFERENCES users(id),
+  check_photo_evidence_id UUID NULLABLE REFERENCES photo_evidences(id),
+  deduction_transaction_id UUID NULLABLE REFERENCES stock_transactions(id),
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+CREATE INDEX idx_order_checklists_order ON order_checklists(order_id);
+CREATE INDEX idx_order_checklists_provider ON order_checklists(provider_role, is_checked);
+```
+
+**Generated saat order confirmed:**
+- Loop semua `package_items` dari package terkait
+- Group by `provider_role`
+- Insert 1 row per item ke `order_checklists`
+- Alarm dikirim per provider_role ke semua user role tersebut
+
+### BUG-FIX 6: Tabel `stock_items` — CANONICAL SCHEMA
+```sql
+CREATE TABLE stock_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Identifikasi
+  item_code VARCHAR(50) UNIQUE NOT NULL,          -- SKU internal, contoh: 'PTI', 'KPR', 'CLN'
+  item_name VARCHAR(255) NOT NULL,                -- contoh: 'Peti Jenazah Premium'
+  description TEXT,
+  category VARCHAR(100),                          -- 'peti', 'dekorasi', 'konsumabel', dll
+
+  -- Kuantitas
+  current_quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
+  minimum_quantity DECIMAL(10,2) NOT NULL DEFAULT 0,  -- alert threshold
+  unit VARCHAR(50) NOT NULL DEFAULT 'pcs',
+
+  -- Sifat item (v1.18)
+  item_nature ENUM('sewa','pakai_habis','pakai_kembali') NOT NULL DEFAULT 'pakai_habis',
+
+  -- Lokasi kepemilikan (v1.29 + v1.31)
+  owner_role VARCHAR(50) NOT NULL DEFAULT 'gudang',
+  -- Nilai valid: 'gudang', 'service_officer' (untuk kantor), 'dekor' (untuk Lafiore)
+
+  -- Harga
+  unit_cost DECIMAL(15,2),                        -- biaya beli per unit (untuk profit calc)
+  unit_price DECIMAL(15,2),                       -- harga jual per unit (untuk billing)
+
+  -- Metadata
+  photo_path TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  last_restocked_at TIMESTAMP,
+  notes TEXT,
+
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+CREATE INDEX idx_stock_items_code ON stock_items(item_code);
+CREATE INDEX idx_stock_items_owner ON stock_items(owner_role, is_active);
+CREATE INDEX idx_stock_items_low ON stock_items(current_quantity, minimum_quantity)
+  WHERE is_active = true;
+```
+
+### BUG-FIX 7: `vehicles.status` ENUM extension
+```sql
+ALTER TABLE vehicles
+  ALTER COLUMN status TYPE VARCHAR(30);
+
+-- ENUM valid baru:
+-- 'available'          : bisa di-assign
+-- 'in_use'             : sedang dipakai order
+-- 'maintenance'        : sedang servis
+-- 'blocked_inspection' : inspeksi critical gagal, tidak boleh jalan (v1.20)
+-- 'external'           : kendaraan sewa eksternal (v1.12)
+-- 'retired'            : sudah tidak dipakai
+```
+
+**State machine:**
+```
+available → in_use (saat di-assign ke order)
+in_use → available (saat order selesai + vehicle kembali)
+available → maintenance (saat Gudang schedule servis)
+maintenance → available (saat servis selesai + inspeksi pass)
+available → blocked_inspection (saat pre-trip inspection critical gagal)
+blocked_inspection → maintenance (saat Gudang buat maintenance request)
+any → retired (manual oleh Super Admin)
+external: status tetap 'external' sampai sewa berakhir
+```
+
+### BUG-FIX 8: `orders.payment_method` — EKSPLISIT
+```sql
+ALTER TABLE orders ADD COLUMN payment_method ENUM('cash','transfer') NULL;
+
+-- Constraint: WAJIB terisi sebelum status bisa berubah ke 'confirmed'
+-- Enforced di application layer (OrderController::confirm)
+```
+
+### BUG-FIX 9: Namespace `/finance/*` vs `/purchasing/*`
+```
+KEPUTUSAN FINAL:
+- `/finance/*` = endpoint utama (authoritative, sesuai v1.30 reporting)
+- `/purchasing/*` = deprecated alias untuk backward compat
+
+Untuk Flutter:
+- Semua panggilan API baru pakai /finance/*
+- Endpoint /purchasing/* TETAP jalan tapi marked @deprecated di code
+- Migrasi bertahap Flutter screens dari /purchasing → /finance (post go-live)
+
+Role yang akses: 'purchasing' (role name tetap 'purchasing' di users table —
+ini hanya namespace URL, bukan role name).
+```
+
+### BUG-FIX 10: Alarm severity levels (NORMAL/HIGH/ALARM) + v1.34
+```
+KEPUTUSAN FINAL:
+- BACKEND: tetap simpan severity level ('NORMAL', 'HIGH', 'ALARM') di
+  kolom notifications.severity untuk:
+    * Dashboard filter (HRD lihat hanya ALARM-level)
+    * Audit & analytics
+    * Sort prioritas di list notif
+
+- FCM DELIVERY: SEMUA notif dikirim dengan full-screen intent + sound + DND bypass
+  (sesuai v1.34). Tidak ada lagi "silent notification" atau "low priority delivery".
+
+- UX: Di dashboard notif app, severity ditandai via warna badge
+  (ALARM=merah, HIGH=kuning, NORMAL=abu). Suara notif sama untuk semua.
+
+Update tabel alarm legacy (v1.13, v1.23 master table):
+- Baca sebagai "severity level untuk dashboard", BUKAN "mode delivery"
+- Tidak perlu rewrite tabel alarm
+```
+
+### BUG-FIX 11: WhatsApp CS International format
+```
+SEBELUM (v1.37 typo):
+cs_whatsapp_international = '6281127144440'  -- SALAH: 13 digit
+
+SESUDAH (v1.38 fix):
+cs_whatsapp_international = '628112714440'   -- BENAR: 12 digit
+
+Validasi:
+- Nomor lokal: '08112714440' (11 digit, diawali 0)
+- Nomor internasional: '628112714440' (12 digit, diawali 62 tanpa 0)
+- wa.me link: https://wa.me/628112714440
+```
+
+---
+
+## TABEL BARU v1.38 — RINGKASAN
+
+| Tabel | Fungsi |
+|-------|--------|
+| `order_so_visits` | Tracking visit SO ke lokasi keluarga (30+30 menit deadline) |
+| `service_offerings` | 2 tipe layanan: anggota, non_anggota |
+| `consumer_memberships` | Keanggotaan consumer (untuk service_type anggota) |
+| `so_assignment_history` | Audit trail rotation SO per service_type |
+
+## TABEL DIPERKAYA v1.38
+
+| Tabel | Perubahan |
+|-------|-----------|
+| `orders` | + service_type, service_offering_id, payment_method, input_source |
+| `orders.created_by_so_channel` | Hapus nilai 'consumer_self' |
+| `vehicles.status` | Extend dengan 'blocked_inspection', 'external' |
+| `roles` | Hapus 'admin', 'finance', 'konsumsi'; tambah 'petugas_akta', 'musisi' |
+
+## SCHEMA CANONICAL YANG DIDEFINISIKAN ULANG v1.38
+
+| Tabel | Status |
+|-------|--------|
+| `stock_items` | Full schema definition (sebelumnya hanya direferensikan) |
+| `order_checklists` | Full schema definition (dipakai v1.29 tanpa schema) |
+
+---
+
+## DAMPAK KE ALUR ORDER v1.38
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  ALUR BARU SEJAK ORDER MASUK                                         ║
+╠═══════════════════════════════════════════════════════════════════════╣
+║                                                                       ║
+║  Menit 0    : Keluarga hubungi SM (telepon/WA/walk-in)                ║
+║  Menit 0-5  : SO input order ke app                                   ║
+║               - service_type: anggota / non_anggota (auto cek membership)
+║               - payment_method: cash / transfer                       ║
+║  Menit 5-10 : Sistem auto-rotation → assign SO berdasarkan            ║
+║               so_assignment_history (fair distribution)               ║
+║  Menit 5-35 : SO WAJIB tiba di lokasi keluarga (30 menit deadline)   ║
+║               - Foto selfie + geofence saat tiba                      ║
+║               - Atau request perpanjangan 30 menit (sekali saja)      ║
+║  Menit 35+  : Jika lewat → alarm HRD + reassign SO                   ║
+║  Di lokasi  : SO bantu isi SAL + tanda tangan                         ║
+║               → SO konfirmasi order                                   ║
+║               → Mulai alur distribusi ke Gudang/Kantor/Lafiore        ║
+║                                                                       ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## ATURAN BISNIS v1.38
+
+```
+1. ORDER INPUT: 100% via SO. Consumer app tidak bisa buat order baru.
+
+2. SO VISIT: 30 menit initial + 30 menit extension maksimal 1x.
+   Foto selfie + geofencing WAJIB saat tiba.
+
+3. SERVICE TYPE: Anggota atau Non-Anggota. Tidak ada "paket" sebagai label.
+   Anggota profit lebih kecil, Non-Anggota profit normal.
+
+4. SO ROTATION: Fair distribution — SO yang paling lama tidak dapat
+   tipe layanan tertentu → prioritas pertama untuk tipe itu.
+
+5. BUG FIXES: Role cleanup, status ENUM alignment, schema canonical,
+   namespace /finance, alarm severity clarification, WA international
+   format fix — semua diselesaikan di v1.38.
+```
+
+## CHANGELOG v1.38
+
+### v1.38 — SO-Mandatory, Visit Deadline, Service Type Anggota/Non-Anggota, Critical Bug Consolidation
+
+**New Requirements:**
+- Input order WAJIB via SO (consumer self-order deprecated)
+- SO visit deadline 30 menit + 30 menit perpanjangan (foto selfie + geofence)
+- Service type Anggota vs Non-Anggota (menggantikan konsep "paket" sebagai label utama)
+- Membership tracking untuk consumer
+- Auto-rotation SO per service type (fair distribution)
+- 4 tabel baru: order_so_visits, service_offerings, consumer_memberships, so_assignment_history
+
+**Critical Bug Fixes (dari audit v1.37):**
+- Header version 1.27 → 1.38
+- Role seed cleanup: hapus admin, finance, konsumsi
+- Status order ENUM v1.26 (17 status) authoritative
+- stock_items schema canonical
+- order_checklists schema canonical
+- vehicles.status ENUM extension (blocked_inspection, external)
+- orders.payment_method explicit column
+- /finance/* vs /purchasing/* namespace resolution
+- Alarm severity clarification (storage vs delivery)
+- WhatsApp CS international format fix
+
+**Pending (konsultasi owner):**
+- Harga dasar & margin untuk service_type Anggota vs Non-Anggota
+- Kriteria/syarat menjadi Anggota Santa Maria
+- Biaya/iuran keanggotaan (jika ada)
+
+---
+
+# SANTA MARIA — PATCH v1.39
+# Konsolidasi 100 Jawaban Owner: Paket Dipertahankan, Admin Kantor Reinstated, Membership Subscription, Transport Luar Kota, GDrive SM, Barcode Barang Rusak
+
+---
+
+## KLARIFIKASI FUNDAMENTAL & KOREKSI v1.38 → v1.39
+
+Berdasarkan jawaban owner atas 100 pertanyaan (tanggal 18 April 2026),
+spec v1.38 dikoreksi dan diperluas sebagai berikut.
+
+---
+
+## PART 1 — KOREKSI FUNDAMENTAL v1.38
+
+### KOREKSI-1: PAKET TETAP DIPAKAI (v1.38 SALAH MENGHAPUS)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  SERVICE TYPE dan PAKET adalah DUA DIMENSI ORTHOGONAL                ║
+║                                                                       ║
+║  DIMENSI 1 — SERVICE TYPE (baru v1.38):                               ║
+║    • Anggota       → dapat diskon harga paket + bayar iuran bulanan   ║
+║    • Non-Anggota   → harga paket standar (lebih mahal dari Anggota)   ║
+║                                                                       ║
+║  DIMENSI 2 — PAKET (lama, TETAP HIDUP):                               ║
+║    • Paket Dasar / Premium / Eksklusif (atau apapun namanya)          ║
+║    • Menentukan CONTENT layanan (peti, dekorasi, makanan, dll)        ║
+║                                                                       ║
+║  Kombinasi order:                                                     ║
+║    • [Anggota × Paket Dasar]      → paket A dengan harga diskon       ║
+║    • [Non-Anggota × Paket Premium] → paket B harga standar            ║
+║    • dll                                                              ║
+║                                                                       ║
+║  ISI PAKET UNTUK ANGGOTA vs NON-ANGGOTA BISA BERBEDA                  ║
+║  (konten dinamis per service_type)                                    ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Schema correction:**
+```sql
+-- v1.38 bilang service_offerings menggantikan packages — SALAH.
+-- v1.39: service_offerings dihapus. Cukup extend packages:
+
+ALTER TABLE packages
+  ADD COLUMN price_anggota DECIMAL(15,2),      -- harga untuk service_type = anggota
+  ADD COLUMN price_non_anggota DECIMAL(15,2);  -- harga untuk service_type = non_anggota
+
+-- Content paket bisa beda per service_type:
+ALTER TABLE package_items
+  ADD COLUMN applicable_service_types VARCHAR(50) DEFAULT 'both';
+-- Nilai: 'anggota_only', 'non_anggota_only', 'both'
+
+-- orders.service_type TETAP ada (dari v1.38)
+-- orders.package_id TETAP WAJIB
+-- orders.service_offering_id DIHAPUS (tidak dipakai)
+```
+
+**Pricing calc saat order dibuat:**
+```
+order.total = CASE order.service_type
+  WHEN 'anggota' THEN packages.price_anggota
+  WHEN 'non_anggota' THEN packages.price_non_anggota
+END + Σ(add-ons)
+```
+
+### KOREKSI-2: STOK KANTOR DIPEGANG SUPER ADMIN (BUKAN REINSTATE ADMIN)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  Owner mengklarifikasi (setelah v1.39 draft):                         ║
+║  "Itu seharusnya SUPER ADMIN, bukan admin. Admin tetap dihapus."      ║
+║                                                                       ║
+║  KEPUTUSAN FINAL:                                                     ║
+║  • Role `admin` TETAP DIHAPUS PERMANEN (sesuai v1.8 & v1.38)          ║
+║  • Stok kantor dipegang oleh SUPER ADMIN                              ║
+║  • Super Admin (God Mode, v1.27) bertambah tanggung jawab operasional:║
+║    - Kelola stok kantor (CRUD stock_items owner_role='super_admin')   ║
+║    - Input data consumer walk-in (atas nama SO jika perlu)            ║
+║    - Daftarkan Anggota baru                                           ║
+║    - Administrasi umum kantor                                         ║
+║  • Super Admin TETAP God Mode untuk fungsi sistem (master data, dll)  ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Implikasi:**
+- Jumlah Super Admin = 1 orang (jawaban Q68), merangkap administrasi kantor.
+- Super Admin berperan seperti "kepala kantor" operasional + admin sistem.
+- Tidak ada role `admin` baru. `admin` tetap di-deprecated permanent.
+
+**Schema update:**
+```sql
+-- TIDAK ADA re-insert role 'admin'. Admin tetap dihapus.
+-- stock_items.owner_role valid values:
+--   'gudang'      → stok gudang
+--   'super_admin' → stok kantor (dipegang Super Admin)
+--   'dekor'       → stok Lafiore
+
+-- Migration (cleanup jika ada legacy data):
+UPDATE stock_items SET owner_role = 'super_admin' WHERE owner_role = 'admin';
+DELETE FROM roles WHERE slug = 'admin';  -- pastikan admin tidak ada
+```
+
+**Route guard:** TIDAK ADA `case 'admin'`. Super Admin tetap pakai `AdminDashboard` (v1.27) yang sudah God Mode — sekarang diperkaya dengan tab khusus untuk operasional kantor.
+
+**Flutter screen tambahan untuk Super Admin (operasional kantor):**
+```
+lib/features/admin/screens/
+  ├── admin_dashboard.dart                    -- (sudah ada) tambah quick access ke:
+  │     -- [📦 Stok Kantor] [👥 Daftar Anggota] [🚶 Walk-in Consumer]
+  │
+  ├── kantor_stock_screen.dart                -- BARU: kelola stok kantor
+  │     -- Pakai shared role_inventory_screen dengan owner_role='super_admin'
+  │
+  ├── walkin_consumer_screen.dart             -- BARU: input consumer walk-in
+  │     -- Form lengkap data consumer (biasanya SO input, tapi Super Admin bisa bantu)
+  │     -- Setelah input selesai → assign SO yang akan handle order-nya
+  │
+  └── (membership_registration_screen sudah ada di Super Admin scope via master data)
+```
+
+### KOREKSI-3: GOOGLE DRIVE TUKANG FOTO = DARI SM (bukan pribadi)
+
+```
+v1.36 bilang: "upload ke Google Drive PRIBADI mereka"
+v1.39 koreksi (jawaban Q43): Google Drive DARI SM (shared workspace SM)
+
+Tukang foto dapat akses ke folder Google Drive SM per order.
+Upload foto → folder tersebut → link otomatis terikat ke order.
+Consumer akses link TANPA melihat folder lain (via shared link dengan permission).
+```
+
+**Implication:**
+- SM perlu setup Google Workspace dengan struktur folder: `/orders/{order_number}/photos/`
+- Tukang foto login dengan akun tamu/shared credential atau Google Drive API
+- Link per order auto-generated + shareable dengan consumer (view-only)
+
+### KOREKSI-4: CANCEL FITUR `service_offerings` DARI v1.38
+
+```sql
+-- v1.38 create table service_offerings dan consumer_memberships
+-- v1.39: HAPUS service_offerings (tidak dipakai).
+-- consumer_memberships TETAP ada, tapi struktur diperluas (lihat PART 2).
+
+DROP TABLE IF EXISTS service_offerings;
+```
+
+---
+
+## PART 2 — SERVICE TYPE & MEMBERSHIP (JAWABAN Q1-Q10, Q97-Q100)
+
+### Membership Model — Subscription Bulanan
+
+```
+Anggota = konsumen yang daftar dan BAYAR IURAN BULANAN ke SM.
+
+Aturan:
+- Status Anggota AKTIF selama masih bayar iuran bulanan.
+- Tidak bayar 1 bulan → status 'grace_period' (tetap dapat harga anggota)
+- Tidak bayar 2 bulan berturut → status 'inactive' (harga kembali non-anggota)
+- Anggota boleh cancel kapan saja, uang iuran TIDAK dikembalikan.
+- Kriteria jadi Anggota: cukup daftar + setuju bayar iuran bulanan.
+  (Tidak ada background check, referral, dll)
+- Kartu anggota: DIGITAL saja di consumer app (tidak ada kartu fisik)
+- Yang didaftarkan Anggota: konsumen itu sendiri (bukan keluarga).
+  Saat ada kematian, yang dapat harga anggota = almarhum adalah Anggota,
+  atau PJ order adalah Anggota yang daftar.
+```
+
+**Update `consumer_memberships`:**
+```sql
+-- Dari v1.38, perluas:
+ALTER TABLE consumer_memberships
+  ADD COLUMN monthly_fee DECIMAL(15,2),           -- iuran per bulan (PENDING confirm)
+  ADD COLUMN last_payment_date DATE,
+  ADD COLUMN next_payment_due DATE,
+  ADD COLUMN grace_period_until DATE,             -- batas toleransi tidak bayar
+  ADD COLUMN total_paid DECIMAL(15,2) DEFAULT 0,
+  ADD COLUMN cancelled_at TIMESTAMP,
+  ADD COLUMN cancellation_reason TEXT;
+
+-- status ENUM diperluas:
+-- 'active'         : bayar tepat waktu
+-- 'grace_period'   : telat < 1 bulan (tetap dapat harga anggota)
+-- 'inactive'       : telat 2+ bulan (kembali ke non-anggota)
+-- 'cancelled'      : consumer cancel sendiri
+-- 'suspended'      : suspended oleh admin (mis. fraud)
+```
+
+**Tabel `membership_payments`:**
+```sql
+CREATE TABLE membership_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  membership_id UUID REFERENCES consumer_memberships(id) ON DELETE CASCADE,
+  payment_period_year INTEGER NOT NULL,
+  payment_period_month INTEGER NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  payment_method ENUM('cash','transfer') NOT NULL,
+  paid_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  received_by UUID REFERENCES users(id),        -- Admin/Purchasing yang input
+  receipt_path TEXT,
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(membership_id, payment_period_year, payment_period_month)
+);
+```
+
+**Scheduler:**
+```php
+// Setiap hari pagi — cek status membership
+$schedule->command('membership:check-payment-status')->dailyAt('06:00');
+
+// Logic:
+// - Jika next_payment_due lewat > 30 hari → set status 'grace_period'
+// - Jika next_payment_due lewat > 60 hari → set status 'inactive'
+// - Kirim reminder ke consumer H-7, H-3, H-1 sebelum jatuh tempo
+```
+
+**API endpoints:**
+```
+POST   /so/membership/register               -- SO input pendaftaran anggota baru
+  Body: { consumer_user_id, membership_number (optional, auto-gen), monthly_fee }
+GET    /so/membership/{id}                   -- lihat detail
+POST   /purchasing/membership/{id}/payment   -- input pembayaran iuran bulanan
+  Body: { period_year, period_month, amount, payment_method, receipt }
+GET    /consumer/me/membership               -- consumer lihat status keanggotaan sendiri
+GET    /consumer/me/membership/payments      -- riwayat pembayaran iuran
+PUT    /consumer/me/membership/cancel        -- consumer cancel keanggotaan
+PUT    /consumer/me/profile                  -- update alamat/HP via app
+```
+
+### ⏳ PENDING — Membership
+
+| # | Item | Status |
+|---|------|--------|
+| Q2 | Nominal iuran keanggotaan per bulan | Belum dikonfirmasi |
+| Q5 | Profit margin Anggota vs Non-Anggota | Belum dikonfirmasi |
+| Q9 | List add-on + harga | Belum dikonfirmasi |
+| Q8 | Detail isi paket untuk Anggota vs Non-Anggota | Belum dikonfirmasi |
+
+---
+
+## PART 3 — SO DETAIL (JAWABAN Q11-Q18, Q94-Q96)
+
+```
+✓ Jumlah SO saat ini: 2 orang (dinamis, bisa bertambah)
+✓ Semua SO handle kedua service_type (Anggota + Non-Anggota)
+✓ Jam kerja SO: 24 JAM (shift — detail shift belum dikonfirmasi)
+✓ SO lapangan vs SO kantor: job desc sama
+✓ SO TIDAK menyimpan stok (stok kantor dipegang Admin)
+✓ Target harian/bulanan: ada (nominal PENDING)
+✓ Keluarga TIDAK input order — SO yang input (diperkuat v1.38)
+✓ Tie rotation: pilih RANDOM (kalau last_assigned_at sama persis)
+✓ Bonus SO: formula PENDING
+
+✓ SO sedang visit BOLEH terima order baru
+  → SO janjian dulu sama consumer via WhatsApp
+  → Upload bukti follow-up WA di app (screenshot percakapan)
+  → Order masuk sebagai sequence berikutnya dalam rotation
+  
+✓ Jika semua SO sedang visit: force-assign ke SO paling lama idle
+  (dengan tetap consider service_type history untuk fair rotation)
+
+✓ Rotation tidak pernah di-reset (cumulative selamanya — audit trail abadi)
+```
+
+**Update `order_so_visits`:**
+```sql
+ALTER TABLE order_so_visits
+  ADD COLUMN followup_whatsapp_screenshot_evidence_id UUID REFERENCES photo_evidences(id);
+
+-- Saat SO sedang handle visit lain dan dapat order baru:
+-- → SO kirim WA ke consumer baru: "Saya akan ke tempat Anda setelah selesai order X"
+-- → Screenshot WA di-upload via photo_evidences (context: 'so_followup_whatsapp')
+-- → Field ini link ke screenshot
+```
+
+**Rotation tie-break update:**
+```
+if eligibleSos.size > 1 and all(last_assigned_at sama persis):
+    selectedSo = eligibleSos.random()  // bukan urutan alfabet, bukan senior
+```
+
+### ⏳ PENDING — SO
+
+| # | Item | Status |
+|---|------|--------|
+| Q13 | Detail shift 24 jam (jam berapa shift ganti) | Belum dikonfirmasi |
+| Q15 | Target harian/bulanan SO (angka konkrit) | Belum dikonfirmasi |
+| Q18 | Commission/bonus SO formula | Belum dikonfirmasi |
+
+---
+
+## PART 4 — GUDANG, KANTOR (ADMIN), LAFIORE (JAWABAN Q19-Q28)
+
+### Gudang
+```
+✓ Jumlah staff gudang: PENDING
+✓ Weekend/libur nasional: ada yang standby (rotasi)
+✓ Stock opname: MINGGUAN, oleh masing-masing role yang punya stok
+  (bukan hanya gudang — Super Admin (stok kantor) & Lafiore juga opname mingguan)
+✓ Stok critical habis saat order masuk: Purchasing langsung PO darurat.
+  Kalau PETI kosong stok → paket TIDAK MUNCUL di pilihan SO
+  (stock-aware dari v1.25 diperkuat)
+✓ Consignment supplier: PENDING
+```
+
+**Extension `packages` stock-aware logic (dari v1.25):**
+```sql
+-- v1.25 mendefinisikan package_items.is_critical. Tambahkan rule:
+-- Saat SO pilih paket, filter:
+-- - Paket dengan item critical stok=0 di KEDUA lokasi (gudang & kantor)
+--   → TIDAK MUNCUL di list paket SO
+-- - Peti adalah item paling critical: kalau habis di gudang & lokasi lain,
+--   paket langsung di-hide
+```
+
+### Kantor (Super Admin)
+```
+✓ Stok kantor dipegang SUPER ADMIN (owner_role = 'super_admin' di stock_items)
+✓ Role `admin` tetap dihapus permanen (KOREKSI-2 di atas)
+✓ Super Admin (1 orang) = God Mode sistem + kepala operasional kantor
+✓ Barang apa saja di kantor vs gudang: PENDING list detail
+
+CATATAN:
+Stok di kantor tidak sebanyak gudang — biasanya item darurat / 
+item yang dibutuhkan di kantor sendiri.
+Super Admin mingguan stock opname seperti role lain yang punya stok.
+```
+
+### Lafiore (Dekor)
+```
+✓ Jumlah staff Lafiore: PENDING
+✓ Lafiore layani klien LUAR SM: TIDAK (hanya order SM internal)
+✓ Bahan baku (bunga, vas, kayu): beli via Purchasing (bukan Lafiore beli sendiri)
+```
+
+**Procurement flow untuk Lafiore (diperkuat):**
+```
+Lafiore butuh bahan → POST /procurement-requests
+  (requested_by = user_lafiore, category = 'bahan_dekorasi')
+→ Purchasing review + cari supplier (bidding atau manual)
+→ Purchasing approve + supplier kirim ke Lafiore
+→ Lafiore terima barang + update stok (owner_role='dekor')
+```
+
+### ⏳ PENDING — Gudang/Kantor/Lafiore
+
+| # | Item | Status |
+|---|------|--------|
+| Q19 | Jumlah staff gudang | Belum dikonfirmasi |
+| Q23 | Consignment supplier (ada/tidak) | Belum dikonfirmasi |
+| Q25 | List barang kantor vs gudang | Belum dikonfirmasi |
+| Q26 | Jumlah staff Lafiore | Belum dikonfirmasi |
+
+---
+
+## PART 5 — DRIVER (JAWABAN Q29-Q32)
+
+```
+✓ Jumlah driver per lokasi (gudang/kantor/Lafiore): PENDING
+✓ Driver TIDAK ada libur tetap (selalu stand-by — konsekuensi layanan 24 jam)
+✓ Driver sakit mendadak: sistem auto-pilih driver backup dari pool yang available
+✓ Driver TIDAK BOLEH refuse assignment (harus terima apapun)
+```
+
+**Update rule v1.32 "driver selalu aktif":**
+```
+- "Tidak ada libur" ≠ "kerja 24/7 non-stop"
+- Sistem tetap track jam kerja driver via daily_attendances
+- Overtime detection tetap jalan (driver_max_duty_hours = 12 di system_thresholds)
+- Jika driver sakit → clock-in dengan alasan 'sakit' → sistem skip dari assignment
+  → alarm HRD untuk follow-up
+- Jika driver tolak assignment → catat hrd_violations (driver_refuse_assignment)
+  → severity: high
+```
+
+**System thresholds tambah:**
+```
+driver_consecutive_days_without_rest_max = 6   -- alarm HRD jika > 6 hari tanpa rest day
+```
+
+### ⏳ PENDING — Driver
+
+| # | Item | Status |
+|---|------|--------|
+| Q29 | Jumlah driver per lokasi | Belum dikonfirmasi |
+
+---
+
+## PART 6 — PURCHASING, PEMUKA AGAMA, TUKANG FOTO (JAWABAN Q33-Q44)
+
+### Purchasing / Finance
+```
+✓ Jumlah staff Purchasing: 1 ORANG
+✓ Approval limit: TIDAK ADA (Purchasing bebas approve nominal berapa pun)
+✓ Pajak PPN/PPh: TIDAK DITRACK di sistem
+✓ Petty cash: BUTUH, tidak ada limit nominal
+✓ Backup saat cuti: TIDAK ADA (harus Purchasing itu sendiri yang handle)
+
+IMPLIKASI:
+- Jika Purchasing cuti → sistem akan freeze approval pending
+- Owner bisa override manual via Super Admin impersonate
+- Urgent PO saat Purchasing off: notifikasi ke Super Admin/Owner
+```
+
+**Risk mitigation:**
+```sql
+-- Tabel untuk tracking Purchasing availability:
+CREATE TABLE purchasing_availability (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purchasing_user_id UUID REFERENCES users(id),
+  date DATE NOT NULL,
+  status ENUM('available','sick','leave','off') DEFAULT 'available',
+  notes TEXT,
+  created_at TIMESTAMP
+);
+
+-- Trigger: jika status != 'available' dan ada procurement_requests urgent → alert Owner
+```
+
+**Petty cash:**
+```sql
+-- Tabel baru:
+CREATE TABLE petty_cash_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  amount DECIMAL(15,2) NOT NULL,
+  direction ENUM('in','out') NOT NULL,
+  category VARCHAR(100),
+  description TEXT NOT NULL,
+  reference_type VARCHAR(50),               -- 'order', 'procurement', 'operational'
+  reference_id UUID,
+  performed_by UUID REFERENCES users(id),
+  receipt_photo_path TEXT,
+  balance_after DECIMAL(15,2) NOT NULL,     -- saldo kas setelah transaksi
+  created_at TIMESTAMP
+);
+
+-- Auto-integrate ke financial_transactions (v1.30)
+```
+
+### Pemuka Agama
+```
+✓ Database pemuka agama internal SM: semua agama (jumlah bertambah, PENDING detail)
+✓ Honor: PER ORDER (bukan bulanan)
+✓ Nominal honor per order: PENDING
+✓ Consumer bawa pemuka agama sendiri (external):
+  → SM TETAP BAYAR HONOR ke pemuka agama tersebut
+  → Bukan zero fee seperti dugaan spec lama
+  → Fee ditransfer oleh Purchasing setelah prosesi
+
+CATATAN:
+Ini berbeda dari spec v1.24 yang menyebut "Rp 0 jika vendor gratis".
+Di SM, pemuka agama SELALU dibayar (baik internal maupun external).
+```
+
+**Update `order_vendor_assignments` fee logic:**
+```
+Sebelum v1.39: external vendor bisa fee = Rp 0
+Sesudah v1.39: untuk vendor_role = 'pemuka_agama', fee WAJIB > 0
+  → Rate per order dikonfigurasi di vendor_role_master + system setting
+```
+
+### Tukang Foto
+```
+✓ Database tukang foto freelance: belum ada (akan dibangun)
+✓ Upah per order (bukan per jam)
+✓ Google Drive: DARI SM (bukan pribadi tukang foto) — KOREKSI-3
+✓ Watermark "Santa Maria" di foto: OPSIONAL
+```
+
+**Update schema untuk Google Drive SM:**
+```sql
+-- Tabel order_photo_deliveries (replace konsep v1.36 Google Drive pribadi):
+CREATE TABLE order_photo_deliveries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  assigned_photographer_id UUID REFERENCES users(id),
+  
+  -- Google Drive folder per order (dari workspace SM)
+  gdrive_folder_id VARCHAR(255),              -- Google Drive folder ID
+  gdrive_folder_url TEXT,                     -- shareable URL
+  consumer_shareable_url TEXT,                -- link view-only untuk consumer (setelah lunas)
+  
+  -- Upload tracking
+  upload_deadline TIMESTAMP NOT NULL,         -- scheduled_at + 3 jam (v1.34)
+  uploaded_at TIMESTAMP,
+  photo_count INTEGER DEFAULT 0,
+  video_count INTEGER DEFAULT 0,
+  total_size_mb DECIMAL(10,2),
+  
+  -- Status
+  status ENUM(
+    'pending',              -- belum upload
+    'uploaded',             -- sudah upload sebelum deadline
+    'late',                 -- upload setelah deadline
+    'not_delivered'         -- > 24 jam setelah deadline tidak upload
+  ) DEFAULT 'pending',
+  
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+**Google Drive integration:**
+- SM setup Google Workspace
+- Root folder: `/SantaMaria_Orders/{year}/{month}/{order_number}/`
+- Tukang foto dapat akses via Google OAuth (login dengan akun pribadi, authorized untuk SM workspace)
+- Consumer akses via shareable link (view-only) SETELAH lunas
+- Link otomatis expire jika consumer belum lunas > 30 hari? (PENDING confirm)
+
+### ⏳ PENDING — Purchasing/Pemuka Agama/Tukang Foto
+
+| # | Item | Status |
+|---|------|--------|
+| Q38 | Jumlah pemuka agama per agama | Belum dikonfirmasi |
+| Q39 | Nominal honor pemuka agama per order | Belum dikonfirmasi |
+| Q41 | Database tukang foto (akan dibangun) | Belum dikonfirmasi |
+| Q42 | Nominal upah tukang foto per order | Belum dikonfirmasi |
+
+---
+
+## PART 7 — TUKANG JAGA, TUKANG ANGKAT PETI, MUSISI (JAWABAN Q45-Q54)
+
+### Tukang Jaga
+```
+✓ Database tukang jaga: 1 ORANG per shift (bukan pool besar)
+✓ Rekrut baru: HRD yang wawancara
+✓ Sakit/tidak datang: fallback ke tukang jaga lain yang available
+✓ Makan & minum: PENDING (SM atau bawa sendiri)
+```
+
+**Update `tukang_jaga_shifts` (dari v1.29):**
+```sql
+-- Tambah kolom:
+ALTER TABLE tukang_jaga_shifts
+  ADD COLUMN backup_tukang_jaga_id UUID REFERENCES users(id),  -- backup yang di-call
+  ADD COLUMN original_assigned_to UUID REFERENCES users(id);   -- yang awalnya di-assign
+```
+
+### Tukang Angkat Peti
+```
+✓ Jumlah orang TERGANTUNG UKURAN PETI (dari master data peti):
+  - Peti kecil/standard: 4-6 orang
+  - Peti besar/medium: 6-8 orang
+  - Peti jumbo/oversize: 8-10 orang
+  - Exact number: koordinator yang tentukan
+
+✓ Koordinator pilih orang-orangnya (punya jaringan sendiri)
+✓ Koordinator digaji PER ORDER (bukan bulanan)
+✓ Upah Rp 75.000/hari/orang = LUMP SUM ke koordinator
+  → Koordinator distribusi sendiri ke anak buahnya
+  → SM bayar total ke koordinator saja (1 transaksi)
+```
+
+**Schema extension (dari v1.14 + v1.34):**
+```sql
+-- Tabel master ukuran peti → rekomendasi jumlah angkat:
+CREATE TABLE coffin_size_master (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  size_label VARCHAR(50) UNIQUE NOT NULL,         -- 'kecil','standard','medium','besar','jumbo'
+  min_length_cm INTEGER,
+  max_length_cm INTEGER,
+  recommended_lifters_min SMALLINT NOT NULL,      -- cth: 4
+  recommended_lifters_max SMALLINT NOT NULL,      -- cth: 6
+  sort_order INTEGER,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+-- Link ke order:
+ALTER TABLE orders
+  ADD COLUMN coffin_size_id UUID REFERENCES coffin_size_master(id),
+  ADD COLUMN lifters_count SMALLINT;    -- jumlah aktual (ditentukan koordinator)
+```
+
+**Seed:**
+```
+kecil    | 150-180 cm | 4-4 orang
+standard | 180-200 cm | 4-6 orang
+medium   | 200-215 cm | 6-6 orang
+besar    | 215-230 cm | 6-8 orang
+jumbo    | 230+ cm    | 8-10 orang
+```
+
+### Musisi
+```
+✓ Jumlah musisi/grup: PENDING
+✓ MC MERANGKAP sebagai musisi (bisa 1 orang yang sama)
+✓ Alat musik: PENDING (SM sediakan atau musisi bawa)
+```
+
+### ⏳ PENDING — Tukang Jaga/Angkat Peti/Musisi
+
+| # | Item | Status |
+|---|------|--------|
+| Q48 | Makan & minum tukang jaga (SM/bawa sendiri) | Belum dikonfirmasi |
+| Q52 | Jumlah musisi/grup langganan | Belum dikonfirmasi |
+| Q54 | Alat musik (SM sediakan/musisi bawa) | Belum dikonfirmasi |
+
+---
+
+## PART 8 — PETUGAS AKTA, HRD, SECURITY, OWNER (JAWABAN Q55-Q68)
+
+### Petugas Akta
+```
+✓ Jumlah: 1 ORANG
+✓ Durasi akta: TERGANTUNG DUKCAPIL (variable — ambil rata-rata dari internet)
+✓ Akta jadi: TUNGGU CONSUMER LUNAS (baru diserahkan)
+✓ Biaya admin instansi: KELUARGA YANG TANGGUNG (bukan SM)
+✓ Instansi mana saja: PENDING (akan ambil dari internet nanti)
+```
+
+**Update `order_death_cert_progress` (dari spec v1.36):**
+```sql
+CREATE TABLE order_death_cert_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id),
+  petugas_akta_id UUID REFERENCES users(id),
+  
+  -- Tahapan
+  current_stage ENUM(
+    'not_started',
+    'collecting_docs',         -- kumpulkan dokumen dari keluarga
+    'submitted_to_kelurahan',  -- submit ke kelurahan
+    'processing_kelurahan',
+    'submitted_to_kecamatan',
+    'processing_kecamatan',
+    'submitted_to_dukcapil',
+    'processing_dukcapil',
+    'cert_issued',             -- akta jadi
+    'waiting_payment',         -- tunggu consumer lunas
+    'handed_to_family'         -- sudah serahkan ke keluarga
+  ) DEFAULT 'not_started',
+  
+  -- Biaya instansi (ditagihkan ke keluarga via order_billing_items)
+  total_admin_fees DECIMAL(15,2) DEFAULT 0,
+  admin_fees_breakdown JSONB,                -- {kelurahan: 50000, dukcapil: 150000, dll}
+  
+  started_at TIMESTAMP,
+  cert_issued_at TIMESTAMP,
+  handed_to_family_at TIMESTAMP,
+  days_elapsed INTEGER,                      -- auto-calc
+  
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Log per tahap dengan foto bukti:
+CREATE TABLE death_cert_stage_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  progress_id UUID REFERENCES order_death_cert_progress(id) ON DELETE CASCADE,
+  stage VARCHAR(50) NOT NULL,
+  institution_name VARCHAR(255),             -- "Kelurahan Pandanaran"
+  visited_at TIMESTAMP NOT NULL,
+  photo_evidence_id UUID REFERENCES photo_evidences(id),   -- foto kunjungan (geofence)
+  fee_paid DECIMAL(15,2),                    -- biaya di instansi ini
+  receipt_photo_evidence_id UUID REFERENCES photo_evidences(id),
+  notes TEXT,
+  created_at TIMESTAMP
+);
+```
+
+**Consumer view (real-time):**
+```dart
+// lib/features/consumer/screens/death_cert_progress_screen.dart
+// Timeline step-by-step:
+// ✅ Collecting documents     (14 Apr)
+// ✅ Submitted to Kelurahan   (15 Apr)  [foto bukti]
+// 🔵 Processing at Kelurahan  (16 Apr — now)
+// ⏳ Submit to Dukcapil
+// ⏳ Cert Issued
+// ⏳ Handed to Family
+```
+
+### HRD
+```
+✓ Gaji pokok per role: PENDING (nanti dilengkapi)
+✓ THR/cuti/sakit: TRACK DI APP
+✓ Progression teguran (SP1→SP2→SP3→PHK): PENDING
+✓ Bonus formula: PENDING (ada formula)
+```
+
+**Tabel HRD tambahan:**
+```sql
+CREATE TABLE employee_leaves (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  leave_type ENUM('cuti_tahunan','sakit','izin','thr','cuti_khusus') NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  days_count INTEGER NOT NULL,
+  reason TEXT,
+  medical_cert_photo TEXT,                  -- jika sakit, foto surat dokter
+  status ENUM('requested','approved','rejected','cancelled') DEFAULT 'requested',
+  approved_by UUID REFERENCES users(id),
+  approved_at TIMESTAMP,
+  rejection_reason TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+CREATE TABLE employee_thr (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  year INTEGER NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  paid_at TIMESTAMP,
+  notes TEXT,
+  created_at TIMESTAMP,
+  UNIQUE(user_id, year)
+);
+```
+
+### Security
+```
+✓ Shift security (pagi/malam/24 jam detail PENDING)
+✓ Tamu WAJIB REGISTRASI di security (bawa KTP, dll)
+✓ CCTV TERINTEGRASI (ada IP untuk disambung ke dashboard owner)
+```
+
+**CCTV integration:**
+```sql
+CREATE TABLE cctv_cameras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  camera_label VARCHAR(255) NOT NULL,          -- "Kantor Depan", "Gudang Pintu 1"
+  location_type ENUM('kantor','gudang','lafiore','parkiran','pos_security'),
+  ip_address VARCHAR(50) NOT NULL,
+  stream_url TEXT NOT NULL,                    -- RTSP atau HTTP stream URL
+  username VARCHAR(100),                       -- credential (encrypted)
+  password_encrypted TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  added_by UUID REFERENCES users(id),
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Owner dashboard:
+-- GET /owner/cctv/cameras           -- list semua camera
+-- GET /owner/cctv/cameras/{id}/live -- ambil live stream URL (auth via VPN atau proxy)
+```
+
+**Update Security incident form (v1.23):**
+```sql
+-- Tambah ke security_incident_logs:
+ALTER TABLE security_incident_logs
+  ADD COLUMN visitor_ktp_photo_evidence_id UUID REFERENCES photo_evidences(id);
+-- Foto KTP tamu saat registrasi (wajib)
+```
+
+### Owner
+```
+✓ Auto-alert anomali: APAPUN yang AI bisa provide
+  → Owner mau "smart alert" — AI detect anything unusual
+✓ Super Admin: 1 ORANG (owner sendiri atau staff IT)
+```
+
+**AI Anomaly Detection (v1.39):**
+```
+Implementasi AI-powered anomaly detection:
+- Baseline: data historis (min 3 bulan operasional)
+- AI detect:
+  * Order volume unusual (spike/drop > 30%)
+  * BBM efficiency drop > 20%
+  * KPI karyawan turun drastis
+  * Payment delay pattern unusual
+  * Vehicle idle time > rata-rata
+  * Stock movement anomaly
+  * Login attempt mencurigakan
+  * Geolocation anomaly (karyawan jauh dari expected location)
+- Alert via OpenAI GPT-4o mini:
+  "Anomali terdeteksi: [detail]. Saran: [action]"
+- Frekuensi check: setiap 15 menit (scheduler)
+```
+
+### ⏳ PENDING — Petugas Akta/HRD/Security/Owner
+
+| # | Item | Status |
+|---|------|--------|
+| Q56 | Durasi akta rata-rata (ambil dari internet) | Belum dikonfirmasi |
+| Q59 | List instansi akta (ambil dari internet) | Belum dikonfirmasi |
+| Q60 | Gaji pokok per role (list) | Belum dikonfirmasi |
+| Q62 | Progression teguran SP1-SP3 trigger | Belum dikonfirmasi |
+| Q63 | Bonus formula | Belum dikonfirmasi |
+| Q64 | Jumlah security + detail shift | Belum dikonfirmasi |
+
+---
+
+## PART 9 — PAYMENT & TRANSPORT LUAR KOTA (JAWABAN Q69-Q74)
+
+### Payment
+```
+✓ SOP keterlambatan bayar (> 3 hari): PENDING
+✓ Cicilan: TIDAK BOLEH
+✓ Metode: CASH dan TRANSFER (via bukti upload dari aplikasi consumer)
+  → Tidak ada QRIS, Virtual Account, payment gateway online
+  → Transfer manual ke rekening SM + consumer upload bukti via app
+```
+
+**Schema adjustment:**
+```sql
+-- orders.payment_method sudah ada dari v1.38 (cash/transfer)
+-- Tidak perlu tambahan.
+```
+
+### Transport Luar Kota
+```
+✓ SM MELAYANI pemakaman luar kota + LUAR PULAU
+✓ Jenazah dari luar kota (bandara/terminal): alur sama
+✓ Biaya tambahan: Rp 25.000 PER KM FIX (dari titik penjemputan)
+  → Bukan negosiasi, fixed rate
+  → Dihitung otomatis: distance × 25.000
+```
+
+**Schema extension:**
+```sql
+-- Tambah ke orders:
+ALTER TABLE orders
+  ADD COLUMN is_out_of_city BOOLEAN DEFAULT FALSE,
+  ADD COLUMN out_of_city_origin VARCHAR(255),     -- titik penjemputan
+  ADD COLUMN out_of_city_distance_km DECIMAL(10,2),
+  ADD COLUMN out_of_city_transport_fee DECIMAL(15,2);   -- distance × rate
+
+-- System thresholds:
+-- out_of_city_rate_per_km = 25000
+-- out_of_city_rate_currency = 'IDR'
+```
+
+**Flow:**
+```
+SO input order luar kota:
+  1. Centang "is_out_of_city"
+  2. Input titik penjemputan (alamat) → Google Maps autocomplete
+  3. Sistem hitung jarak (Google Maps Distance Matrix API) ke rumah duka / SM
+  4. Auto-hitung: out_of_city_transport_fee = distance × 25000
+  5. Fee masuk ke order_billing_items sebagai line item "Transport Luar Kota"
+  6. Consumer lihat breakdown di invoice
+```
+
+### Multi Rumah Duka
+```
+✓ Q75: TIDAK ADA prosesi pindah rumah duka
+  → Multi rumah duka dalam 1 order TIDAK DI-SUPPORT (untuk sekarang)
+  → Kalaupun terjadi di lapangan, harus dibuat order terpisah
+```
+
+### ⏳ PENDING — Payment
+
+| # | Item | Status |
+|---|------|--------|
+| Q69 | SOP keterlambatan bayar consumer | Belum dikonfirmasi |
+
+---
+
+## PART 10 — PROSESI, STOK, AKTA (JAWABAN Q76-Q83)
+
+### Prosesi Harian
+```
+✓ Jadwal kegiatan di rumah duka: DI-TRACK DI APP
+  → Setelah database rumah duka + TPU terbentuk, check-in/out karyawan
+    akan otomatis tercatat di lokasi mana + kapan
+  → Timeline aktivitas per hari di rumah duka tersusun otomatis
+  
+✓ Durasi prosesi per agama: PERLU DI-CONFIG (PENDING)
+```
+
+**Schema: `location_presence_logs` (tracking karyawan di lokasi):**
+```sql
+CREATE TABLE location_presence_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id),
+  user_id UUID REFERENCES users(id),
+  user_role VARCHAR(50),
+  
+  location_type ENUM('rumah_duka','tpu','gereja','rumah_keluarga','lainnya'),
+  location_name VARCHAR(255),                -- nama rumah duka / TPU
+  location_ref_id UUID,                      -- FK ke funeral_homes atau cemeteries
+  
+  action ENUM('check_in','check_out') NOT NULL,
+  timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+  latitude DECIMAL(10,7),
+  longitude DECIMAL(10,7),
+  photo_evidence_id UUID REFERENCES photo_evidences(id),
+  
+  notes TEXT,
+  created_at TIMESTAMP,
+  
+  INDEX (order_id, timestamp),
+  INDEX (user_id, timestamp)
+);
+```
+
+### Stok & Barang
+```
+✓ Stock opname: MINGGUAN
+✓ Barang rusak: scan BARCODE per item → print barcode per item → nominal estimasi kerugian
+  → Setiap stok item dapat unique barcode
+  → Saat rusak: scan barcode → input kerusakan + estimasi kerugian
+  → Auto-log ke stock_damage_logs
+  
+✓ Barang hilang di rumah duka: TUKANG JAGA TERAKHIR yang menerima bertanggung jawab
+  → Tracking via tukang_jaga_item_deliveries (v1.29)
+  → Jika hilang → claim ke tukang jaga shift terakhir sebelum hilang
+  → Potong dari upah tukang jaga tersebut
+  
+✓ Minimum quantity: masing-masing role yang punya stok tentukan
+  → Gudang tentukan minimum untuk stok gudang
+  → Super Admin tentukan minimum untuk stok kantor
+  → Lafiore tentukan minimum untuk stok dekor
+```
+
+**Schema: barcode per item:**
+```sql
+-- Update stock_items:
+ALTER TABLE stock_items
+  ADD COLUMN barcode VARCHAR(255) UNIQUE,           -- unique barcode
+  ADD COLUMN barcode_image_path TEXT;               -- path ke barcode PNG di R2
+
+-- Auto-generate barcode saat stock_items dibuat (Code128 atau EAN13)
+
+-- Tabel stock_damage_logs:
+CREATE TABLE stock_damage_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stock_item_id UUID REFERENCES stock_items(id),
+  order_id UUID NULLABLE REFERENCES orders(id),    -- order terkait jika ada
+  barcode_scanned VARCHAR(255),
+  reported_by UUID REFERENCES users(id),
+  reported_role VARCHAR(50),
+  
+  quantity_damaged DECIMAL(10,2) NOT NULL,
+  damage_level ENUM('minor','moderate','severe','total_loss') NOT NULL,
+  estimated_loss_amount DECIMAL(15,2) NOT NULL,
+  
+  damage_photo_evidence_id UUID REFERENCES photo_evidences(id),
+  damage_description TEXT NOT NULL,
+  
+  responsible_party ENUM('sm_gudang','sm_driver','sm_dekor','tukang_jaga','keluarga','unknown'),
+  responsible_user_id UUID REFERENCES users(id),  -- jika karyawan
+  
+  status ENUM('reported','investigated','resolved','written_off') DEFAULT 'reported',
+  resolution_notes TEXT,
+  resolved_by UUID REFERENCES users(id),
+  resolved_at TIMESTAMP,
+  
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Tabel stock_lost_logs (mirip, untuk barang hilang):
+CREATE TABLE stock_lost_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stock_item_id UUID REFERENCES stock_items(id),
+  order_id UUID NULLABLE REFERENCES orders(id),
+  
+  quantity_lost DECIMAL(10,2) NOT NULL,
+  estimated_loss_amount DECIMAL(15,2) NOT NULL,
+  
+  -- Auto-detect tukang jaga terakhir yang terima
+  last_tukang_jaga_id UUID REFERENCES users(id),
+  last_delivery_id UUID REFERENCES tukang_jaga_item_deliveries(id),
+  
+  -- Penalty
+  penalty_amount DECIMAL(15,2),              -- nominal dipotong dari upah tukang jaga
+  penalty_deducted BOOLEAN DEFAULT FALSE,
+  penalty_deducted_at TIMESTAMP,
+  
+  reported_by UUID REFERENCES users(id),
+  reported_at TIMESTAMP NOT NULL,
+  status ENUM('reported','investigating','charged','written_off','recovered') DEFAULT 'reported',
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+**Flutter screens:**
+```
+lib/features/shared/screens/
+  ├── barcode_scanner_screen.dart              -- reusable barcode scanner (pakai mobile_scanner)
+  └── damage_report_screen.dart                -- scan barcode → form kerusakan
+        -- Input: barcode, quantity damaged, damage level, estimated loss,
+        --        foto kerusakan (geofencing wajib), description
+        -- Auto-create stock_damage_logs
+```
+
+### Akta
+```
+✓ Consumer bisa lihat real-time progress di app
+✓ Jangka waktu maksimal: PENDING (tergantung Dukcapil)
+```
+
+### ⏳ PENDING — Prosesi/Stok/Akta
+
+| # | Item | Status |
+|---|------|--------|
+| Q77 | Durasi prosesi per agama (config) | Belum dikonfirmasi |
+| Q83 | Jangka waktu max akta (SOP internal) | Belum dikonfirmasi |
+
+---
+
+## PART 11 — DEVICE, LANDING PAGE, CONSUMER APP (JAWABAN Q84-Q93)
+
+### Device & Teknis
+```
+✓ HP kantor: Android 12 MINIMUM
+✓ Consumer HP: Android 12 MINIMUM
+✓ Internet kantor down: tetap pakai app, ada kuota data (fallback ke mobile data)
+✓ Backup database: SETIAP HARI (daily backup)
+```
+
+**App requirements:**
+```yaml
+# pubspec.yaml:
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+# android/app/build.gradle:
+android:
+  minSdkVersion 31    # Android 12 = API 31
+  targetSdkVersion 34
+
+# iOS: tidak di-support (SM tidak punya iPhone kantor)
+```
+
+**Backup strategy:**
+```
+- PostgreSQL: pg_dump harian ke Cloudflare R2 pukul 03:00 WIB
+- Retention: 30 hari daily backup + 12 bulan monthly archive
+- Hot backup ke standby server (jika budget cukup — PENDING)
+- Test restore bulanan: backup diverifikasi dengan restore ke staging
+```
+
+### Landing Page & Blog
+```
+✓ Blog publish: BUTUH APPROVAL OWNER sebelum publish
+✓ Obituary: OTOMATIS DIBUAT saat order dibuat
+  → Begitu SO konfirmasi order → system auto-create obituary draft
+  → Data auto-fill dari orders: nama almarhum, tanggal meninggal, foto, dll
+  → Status: 'draft' sampai owner approve → 'published'
+✓ Testimonial: SO INPUT MANUAL (setelah consumer beri feedback lisan)
+```
+
+**Update `obituaries` (v1.28):**
+```sql
+ALTER TABLE obituaries
+  ADD COLUMN auto_generated_from_order BOOLEAN DEFAULT FALSE,
+  ADD COLUMN requires_owner_approval BOOLEAN DEFAULT TRUE,
+  ADD COLUMN approval_status ENUM('pending','approved','rejected') DEFAULT 'pending',
+  ADD COLUMN approved_by UUID REFERENCES users(id),
+  ADD COLUMN approved_at TIMESTAMP,
+  ADD COLUMN rejection_reason TEXT;
+```
+
+**Trigger auto-create obituary:**
+```php
+// app/Listeners/CreateObituaryOnOrderConfirmed.php
+class CreateObituaryOnOrderConfirmed {
+  public function handle(OrderConfirmed $event) {
+    $order = $event->order;
+    Obituary::create([
+      'order_id' => $order->id,
+      'deceased_name' => $order->alm_nama_lengkap,
+      'deceased_dob' => $order->alm_tanggal_lahir,
+      'deceased_dod' => $order->alm_tanggal_meninggal,
+      'deceased_religion' => $order->alm_agama,
+      'funeral_location' => $order->rumah_duka,
+      'funeral_datetime' => $order->scheduled_at,
+      'family_contact_name' => $order->pj_nama,
+      'family_contact_phone' => $order->pj_no_telp,
+      'status' => 'draft',
+      'auto_generated_from_order' => true,
+      'requires_owner_approval' => true,
+      'approval_status' => 'pending',
+      'created_by' => auth()->id() ?? $order->so_user_id,
+    ]);
+
+    // Alarm Owner:
+    NotificationService::send(
+      ownerUserId(),
+      'HIGH',
+      'Berita Duka Baru Menunggu Approval',
+      "Order {$order->order_number} — Almarhum {$order->alm_nama_lengkap}"
+    );
+  }
+}
+```
+
+### Consumer App
+```
+✓ Fitur consumer app (tanpa input order):
+  - Tracking order real-time
+  - Tanda tangan Surat Penerimaan Layanan
+  - Amendment approval
+  - Konfirmasi barang diterima (chain)
+  - Lihat invoice + upload bukti bayar
+  - Akses dokumen & foto setelah lunas
+  - Lihat status membership + riwayat iuran
+  - Update profil (alamat/HP) sendiri
+  - Lihat progress akta real-time
+  
+✓ Rating prompt ke Play Store/App Store: SETELAH LUNAS
+✓ 1 account 1 device (tidak multi-device)
+```
+
+**Device binding implementation:**
+```sql
+ALTER TABLE users
+  ADD COLUMN bound_device_id VARCHAR(255),        -- device_id yang terdaftar
+  ADD COLUMN bound_device_model VARCHAR(255),
+  ADD COLUMN bound_at TIMESTAMP;
+
+-- Saat login: 
+-- - Jika bound_device_id NULL → bind ke device sekarang
+-- - Jika bound_device_id != device sekarang → TOLAK login
+--   → Error: "Akun sudah terdaftar di device lain. Hubungi admin untuk reset."
+-- - Admin bisa reset binding: PUT /admin/users/{id}/reset-device
+```
+
+### ⏳ PENDING — Device/Landing/Consumer
+
+Tidak ada pending dari jawaban Anda.
+
+---
+
+## PART 12 — RINGKASAN PENDING ITEMS v1.39
+
+Total item yang belum dikonfirmasi (akan ditanya kembali nanti):
+
+### PAKET & PRICING
+- [ ] Q2: Nominal iuran keanggotaan per bulan
+- [ ] Q5: Profit margin Anggota vs Non-Anggota
+- [ ] Q8: Detail isi paket Anggota vs Non-Anggota
+- [ ] Q9: List add-on + harga
+
+### SDM
+- [ ] Q13: Detail shift 24 jam SO
+- [ ] Q15: Target harian/bulanan SO
+- [ ] Q18: Commission/bonus SO formula
+- [ ] Q19: Jumlah staff gudang
+- [ ] Q23: Consignment supplier
+- [ ] Q26: Jumlah staff Lafiore
+- [ ] Q29: Jumlah driver per lokasi
+- [ ] Q38: Jumlah & database pemuka agama
+- [ ] Q39: Nominal honor pemuka agama
+- [ ] Q41: Database tukang foto (akan dibangun)
+- [ ] Q42: Nominal upah tukang foto per order
+- [ ] Q48: Makan & minum tukang jaga
+- [ ] Q52: Jumlah musisi/grup
+- [ ] Q54: Alat musik (sediakan/bawa)
+- [ ] Q60: Gaji pokok per role
+- [ ] Q62: Progression teguran
+- [ ] Q63: Bonus formula
+- [ ] Q64: Detail shift security
+
+### OPS
+- [ ] Q25: List barang kantor vs gudang
+- [ ] Q56: Durasi akta rata-rata (dari internet)
+- [ ] Q59: List instansi akta (dari internet)
+- [ ] Q69: SOP keterlambatan bayar consumer
+- [ ] Q77: Durasi prosesi per agama
+- [ ] Q83: Jangka waktu max akta
+
+---
+
+## PART 13 — TABEL BARU/DIPERKAYA v1.39
+
+### Tabel Baru
+| Tabel | Fungsi |
+|-------|--------|
+| `membership_payments` | Pembayaran iuran bulanan anggota |
+| `purchasing_availability` | Cuti/sakit Purchasing |
+| `petty_cash_transactions` | Kas kecil kantor |
+| `order_photo_deliveries` | Google Drive SM per order untuk foto |
+| `coffin_size_master` | Master ukuran peti → rekomendasi jumlah angkat |
+| `employee_leaves` | Cuti, sakit, izin karyawan |
+| `employee_thr` | Pencatatan THR |
+| `cctv_cameras` | Integrasi CCTV ke owner dashboard |
+| `order_death_cert_progress` | Progress akta real-time |
+| `death_cert_stage_logs` | Log per tahap akta + foto bukti |
+| `location_presence_logs` | Check-in/out karyawan di lokasi (rumah duka/TPU) |
+| `stock_damage_logs` | Log barang rusak dengan barcode |
+| `stock_lost_logs` | Log barang hilang + accountability tukang jaga |
+
+### Tabel Diperkaya
+| Tabel | Perubahan |
+|-------|-----------|
+| `packages` | + price_anggota, price_non_anggota |
+| `package_items` | + applicable_service_types |
+| `consumer_memberships` | + monthly_fee, payment tracking, grace_period |
+| `order_so_visits` | + followup_whatsapp_screenshot |
+| `orders` | + is_out_of_city, out_of_city fields, coffin_size_id, lifters_count |
+| `stock_items` | + barcode, barcode_image_path |
+| `tukang_jaga_shifts` | + backup_tukang_jaga_id |
+| `security_incident_logs` | + visitor_ktp_photo |
+| `obituaries` | + auto_generated_from_order, approval workflow |
+| `users` | + bound_device_id (1 account 1 device) |
+| `roles` | Tidak ada perubahan (admin TETAP dihapus — Super Admin handle stok kantor) |
+
+### Tabel Dihapus (dari v1.38)
+| Tabel | Alasan |
+|-------|--------|
+| `service_offerings` | Tidak dipakai — paket TETAP hidup, service_type jadi kolom di orders |
+
+---
+
+## PART 14 — ATURAN BISNIS TAMBAHAN v1.39
+
+```
+1. PAKET TETAP dipakai sebagai penentu konten layanan.
+   service_type (Anggota/Non-Anggota) menentukan harga paket tersebut.
+
+2. Role `admin` TETAP DIHAPUS (sesuai v1.8). SUPER ADMIN (1 orang) yang
+   merangkap kelola stok kantor + input data consumer walk-in + daftar
+   anggota baru (selain God Mode sistem). Tidak ada role `admin` baru.
+
+3. MEMBERSHIP = subscription bulanan. Status aktif selama bayar.
+   Grace period 30 hari, inactive 60 hari, tidak bayar 2 bulan → non-anggota.
+   Cancel boleh, iuran TIDAK dikembalikan.
+
+4. GOOGLE DRIVE untuk foto dokumentasi dari WORKSPACE SM (bukan pribadi).
+   Consumer akses via shareable link SETELAH lunas.
+
+5. TRANSPORT LUAR KOTA: Rp 25.000/km fix dari titik penjemputan.
+   Auto-calc via Google Maps Distance Matrix.
+
+6. BARANG RUSAK: scan barcode → input kerusakan + estimasi kerugian.
+   Setiap stock_item punya unique barcode.
+
+7. BARANG HILANG DI RUMAH DUKA: tukang jaga terakhir yang menerima
+   bertanggung jawab. Potongan dari upah tukang jaga tersebut.
+
+8. PEMUKA AGAMA SELALU DIBAYAR — baik internal SM maupun vendor external
+   yang dibawa consumer. Tidak pernah Rp 0.
+
+9. OBITUARY OTOMATIS DIBUAT saat order confirmed, draft menunggu approval Owner.
+
+10. 1 ACCOUNT = 1 DEVICE. Login di device lain → error + minta reset admin.
+
+11. INTERNET DOWN: tetap pakai app via mobile data / kuota HP. Backup database harian.
+
+12. CCTV TERINTEGRASI: Owner dashboard bisa lihat live feed dari semua CCTV
+    kantor/gudang/Lafiore via IP camera streaming.
+```
+
+---
+
+## CHANGELOG v1.39
+
+### v1.39 — Konsolidasi 100 Jawaban Owner
+
+**Koreksi Fundamental dari v1.38:**
+- Paket DIPERTAHANKAN (bukan dihapus) — orthogonal dengan service_type
+- Role `admin` TETAP DIHAPUS — Super Admin yang handle stok kantor (+ tanggung jawab operasional admin)
+- Google Drive tukang foto dari workspace SM (bukan pribadi)
+- `service_offerings` table DIHAPUS (tidak dipakai)
+
+**Fitur Baru:**
+- Membership subscription bulanan dengan grace period + inactive logic
+- Transport luar kota dengan rate Rp 25.000/km fix
+- Barcode scanning untuk stock_items
+- Stock damage & lost tracking dengan accountability
+- CCTV integration ke owner dashboard (IP cameras)
+- Obituary auto-generate saat order confirmed + owner approval workflow
+- Petty cash tracking di kantor
+- Purchasing availability (cuti/sakit)
+- Employee leaves & THR tracking
+- 1 account 1 device binding
+- Order death cert progress real-time untuk consumer
+- Location presence logs (check-in/out di rumah duka/TPU)
+- Coffin size master (rekomendasi jumlah tukang angkat)
+
+**Tabel Baru:** 13 tabel
+**Tabel Diperkaya:** 11 tabel
+**Tabel Dihapus:** 1 (service_offerings)
+
+**Pending Items:** 25 item (detail di PART 12)
+
+---
+
+# SANTA MARIA — PATCH v1.40
+# Koreksi Operasional: Hapus Pemuka Agama Internal, Upah Tukang Foto per Hari, Stock Opname 6 Bulan, Flow Akta Lengkap, Barang Titipan Kacang, Layanan Custom
+
+---
+
+## KOREKSI FUNDAMENTAL DARI v1.39
+
+### KOREKSI-1: HAPUS FITUR PEMUKA AGAMA INTERNAL
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  TIDAK ADA PEMUKA AGAMA INTERNAL SM                                   ║
+║                                                                       ║
+║  • Hapus role internal `pemuka_agama` dari pool SM                    ║
+║  • Pihak keluarga menghubungi pemuka agama sendiri                    ║
+║  • Pihak keluarga LANGSUNG BAYAR ke pemuka agama (BUKAN via SM)       ║
+║  • SM TIDAK transfer honor ke pemuka agama (koreksi v1.39 Q39)        ║
+║                                                                       ║
+║  Peran SM hanya: fasilitasi jadwal + koordinasi lokasi                ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Schema update:**
+```sql
+-- Hapus role pemuka_agama dari pool internal
+DELETE FROM roles WHERE slug = 'pemuka_agama';
+
+-- User existing role='pemuka_agama' → soft deactivate atau ubah ke role lain
+UPDATE users SET is_active = false WHERE role = 'pemuka_agama' AND is_active = true;
+
+-- vendor_role_master.pemuka_agama TETAP ADA sebagai opsi EXTERNAL saja
+-- (untuk konsumer yang input data pemuka agama mereka — kontak only, tanpa transaksi)
+-- Tetapi: order_vendor_assignments.fee untuk pemuka_agama WAJIB = 0
+--         karena SM tidak bayar, keluarga yang bayar langsung
+```
+
+**Koreksi aturan v1.39:**
+- Hapus aturan "PEMUKA AGAMA SELALU DIBAYAR" (dari PART 14 v1.39 point 8)
+- Pemuka agama di `order_vendor_assignments` → fee selalu 0, tracking info only
+
+**Flutter update:**
+```
+lib/features/service_officer/screens/vendor_assign_form_screen.dart
+  -- Saat pilih jenis vendor 'pemuka_agama':
+  --   → Sumber WAJIB = 'external' (tidak ada opsi internal)
+  --   → Fee field WAJIB = 0 (disabled, tidak bisa diisi)
+  --   → Tampilkan notice: "Pemuka agama dibayar langsung oleh keluarga ke pemuka agama,
+  --                        bukan via SM."
+```
+
+---
+
+### KOREKSI-2: UPAH TUKANG FOTO PER HARI (BUKAN PER ORDER)
+
+```
+v1.34/v1.36: upah tukang foto per order
+v1.40: upah tukang foto PER HARI, untuk banyak sesi/order di hari itu
+```
+
+**Schema update:**
+```sql
+-- Hapus asumsi fee per order untuk tukang_foto di order_vendor_assignments
+-- Tukang foto bisa handle multiple order di 1 hari, upah dihitung per hari (bukan per order)
+
+-- Tabel baru untuk track upah harian tukang foto:
+CREATE TABLE photographer_daily_wages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  photographer_user_id UUID REFERENCES users(id),
+  work_date DATE NOT NULL,
+  session_count INTEGER NOT NULL DEFAULT 0,     -- jumlah sesi/order hari itu
+  order_ids JSONB DEFAULT '[]',                 -- array order_id yang dihandle hari itu
+  daily_rate DECIMAL(15,2) NOT NULL,            -- tarif per hari (dari master)
+  bonus_per_extra_session DECIMAL(15,2) DEFAULT 0,  -- bonus jika > threshold sesi
+  total_wage DECIMAL(15,2) NOT NULL,
+  status ENUM('draft','finalized','paid') DEFAULT 'draft',
+  finalized_at TIMESTAMP,
+  paid_at TIMESTAMP,
+  paid_by UUID REFERENCES users(id),
+  payment_receipt_path TEXT,
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(photographer_user_id, work_date)
+);
+```
+
+**Business logic:**
+- Tukang foto check-in di hari H → `photographer_daily_wages` record dibuat
+- Setiap kali handle order baru di hari itu → `session_count++`, `order_ids` append
+- Di akhir hari (atau H+1) → Purchasing finalize + bayar
+- Jika 1 order span multi-day → tiap hari masuk sebagai 1 session berbeda
+
+---
+
+### KOREKSI-3: STOCK OPNAME 6 BULANAN (BUKAN MINGGUAN)
+
+```
+v1.39 Q21: "Stock opname mingguan oleh role yang punya stok"
+v1.40: STOCK OPNAME SETIAP 6 BULAN (semester)
+```
+
+**Scheduler update:**
+```php
+// Dari v1.39 daily/weekly → v1.40 per 6 bulan
+$schedule->command('stock:opname-reminder')
+  ->cron('0 8 1 1,7 *')   // Januari 1 & Juli 1, jam 08:00
+  ->timezone('Asia/Jakarta');
+
+// Reminder ke role yang punya stok:
+// - Gudang
+// - Super Admin (stok kantor)
+// - Dekor/Lafiore
+```
+
+**Tabel baru `stock_opname_sessions`:**
+```sql
+CREATE TABLE stock_opname_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  period_year INTEGER NOT NULL,
+  period_semester ENUM('H1','H2') NOT NULL,   -- H1 = Jan-Jun, H2 = Jul-Dec
+  owner_role VARCHAR(50) NOT NULL,            -- 'gudang','super_admin','dekor'
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  performed_by UUID REFERENCES users(id),
+  total_items_counted INTEGER DEFAULT 0,
+  total_variance_count INTEGER DEFAULT 0,     -- jumlah item dengan selisih
+  total_variance_amount DECIMAL(15,2) DEFAULT 0,  -- nilai total selisih (kerugian/kelebihan)
+  status ENUM('open','in_progress','completed','reviewed') DEFAULT 'open',
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(period_year, period_semester, owner_role)
+);
+
+CREATE TABLE stock_opname_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES stock_opname_sessions(id) ON DELETE CASCADE,
+  stock_item_id UUID REFERENCES stock_items(id),
+  system_quantity DECIMAL(10,2) NOT NULL,     -- jumlah di sistem sebelum opname
+  actual_quantity DECIMAL(10,2) NOT NULL,     -- jumlah fisik hasil hitung
+  variance DECIMAL(10,2) NOT NULL,            -- actual - system (bisa negatif)
+  variance_value DECIMAL(15,2),               -- nominal kerugian/kelebihan
+  photo_evidence_id UUID REFERENCES photo_evidences(id),
+  notes TEXT,
+  reconciled_at TIMESTAMP,                    -- kapan adjustment dibuat
+  adjustment_transaction_id UUID REFERENCES stock_transactions(id),
+  created_at TIMESTAMP
+);
+```
+
+---
+
+### KOREKSI-4: BIAYA ADMINISTRASI AKTA INCLUDE DI PAKET
+
+```
+v1.39: "Biaya admin instansi ditanggung keluarga"
+v1.40: BIAYA ADMINISTRASI AKTA SUDAH INCLUDE DI PAKET LAYANAN
+```
+
+**Update `order_death_cert_progress` (v1.39):**
+```sql
+-- Hapus konsep "admin_fees ditagihkan ke keluarga"
+-- admin_fees tetap di-track untuk accounting internal SM
+-- Tapi TIDAK ditambahkan ke order_billing_items
+
+-- Dokumentasi internal saja:
+ALTER TABLE order_death_cert_progress
+  ALTER COLUMN total_admin_fees SET DEFAULT 0;
+-- Admin fees = biaya internal SM, dicatat untuk financial_transactions (v1.30)
+-- Bukan baris tagihan di invoice consumer
+```
+
+**Billing logic:**
+- Saat akta progress selesai → admin_fees masuk ke `financial_transactions`
+  dengan category = `operational`, direction = `out`
+- TIDAK muncul di invoice consumer (sudah include di harga paket)
+- Paket harga sudah budget untuk biaya admin ini
+
+---
+
+### KOREKSI-5: PROSESI PINDAH RUMAH DUKA = LAYANAN CUSTOM
+
+```
+v1.39 Q75: "Multi rumah duka tidak di-support"
+v1.40: MEMUNGKINKAN sebagai LAYANAN CUSTOM
+```
+
+**Schema update:**
+```sql
+-- Tambah flag layanan custom di orders:
+ALTER TABLE orders
+  ADD COLUMN is_custom_service BOOLEAN DEFAULT FALSE,
+  ADD COLUMN custom_service_notes TEXT,
+  ADD COLUMN custom_service_extra_fee DECIMAL(15,2) DEFAULT 0;
+
+-- Tabel untuk multi-location per order (jika is_custom_service = true):
+CREATE TABLE order_location_phases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  phase_sequence SMALLINT NOT NULL,            -- 1, 2, 3, ...
+  funeral_home_id UUID REFERENCES funeral_homes(id),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  activities TEXT,                             -- kegiatan di phase ini
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  UNIQUE(order_id, phase_sequence)
+);
+```
+
+**Flow:**
+- SO input order normal (1 rumah duka) → flag `is_custom_service = false`
+- Keluarga minta pindah rumah duka di tengah prosesi → SO ubah flag ke `true`
+- SO input phase baru di `order_location_phases`
+- Barang & tim di-arrange ulang ke rumah duka baru
+- Extra fee dikenakan (nominal manual, negotiable)
+
+---
+
+## PART 1 — OPERASIONAL SDM (KLARIFIKASI)
+
+### Gudang
+```
+✓ GUDANG TIDAK ADA LIBUR (24/7 standby)
+✓ Rotasi staff internal untuk weekend/libur nasional (sudah disinggung v1.39)
+✓ Stock opname setiap 6 BULAN (koreksi dari v1.39 mingguan)
+```
+
+### Driver
+```
+✓ DRIVER TIDAK ADA LIBUR (re-confirm dari v1.32/v1.39)
+✓ Sistem track jam kerja via daily_attendances
+✓ Overtime/rest day tetap dipantau (driver_max_duty_hours = 12)
+```
+
+### Tukang Jaga
+```
+✓ Rekrut tukang jaga baru: HRD YANG WAWANCARA & TAMBAHKAN KE SISTEM
+  (jawaban Q45 v1.39 diperjelas)
+✓ Tukang jaga sakit/tidak bisa datang: WAJIB MENGABARI HRD
+  → HRD cari backup tukang jaga dari pool
+  → Catat di employee_leaves (v1.39) dengan leave_type = 'sakit'
+✓ Makan & minum TIDAK disediakan SM (koreksi dari v1.39 PENDING Q48)
+  → Tukang jaga bawa/beli sendiri
+  → Biaya makan/minum SUDAH INCLUDE di upah shift mereka
+```
+
+**Schema update:**
+```sql
+-- tukang_jaga_shifts (v1.29) tetap, tambahkan:
+ALTER TABLE tukang_jaga_shifts
+  ADD COLUMN meals_included BOOLEAN DEFAULT FALSE;  -- SM tidak sediakan makan
+-- Default FALSE untuk tukang_jaga (per v1.40)
+-- Field ini ada agar di masa depan bisa flexible per order
+```
+
+**HRD workflow — tukang jaga sakit:**
+```
+API endpoint baru:
+POST /tukang-jaga/report-sick
+  Body: { shift_id, reason, medical_cert_photo (optional) }
+  → Auto-create employee_leaves (leave_type='sakit')
+  → Alarm HRD: "Tukang jaga [nama] sakit untuk shift [X]. Cari backup."
+  → HRD cari tukang jaga lain yang available → assign via tukang_jaga_shifts.backup_tukang_jaga_id
+```
+
+### Musisi / Grup Musisi
+```
+✓ Bayaran PER ORANG PER SESI (bukan per grup per order)
+  → 1 grup musisi 5 orang, 1 sesi misa = 5 × rate_per_orang
+  → 2 sesi = 10 × rate_per_orang
+✓ MC merangkap musisi (v1.36) — bayaran juga per orang per sesi
+```
+
+**Schema update:**
+```sql
+-- Tabel baru untuk konfigurasi upah musisi:
+CREATE TABLE musician_wage_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role_label VARCHAR(100) NOT NULL,             -- 'musisi', 'mc', 'paduan_suara'
+  rate_per_session_per_person DECIMAL(15,2) NOT NULL,
+  effective_date DATE NOT NULL,
+  end_date DATE,
+  is_active BOOLEAN DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+
+-- Tabel sesi musisi per order:
+CREATE TABLE order_musician_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  session_date DATE NOT NULL,
+  session_type ENUM('misa','doa_malam','prosesi','pemberkatan','lainnya') NOT NULL,
+  session_start_time TIME,
+  session_end_time TIME,
+  location VARCHAR(255),
+  musician_count SMALLINT NOT NULL,
+  rate_per_person DECIMAL(15,2) NOT NULL,
+  total_wage DECIMAL(15,2) NOT NULL,           -- musician_count × rate_per_person
+  musicians_user_ids JSONB DEFAULT '[]',       -- array user_id musisi yang hadir
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+---
+
+## PART 2 — ALUR AKTA KEMATIAN LENGKAP v1.40
+
+### Proses & Durasi
+```
+✓ Durasi total: 1-2 MINGGU (jawaban Q56 v1.39)
+✓ Jangka waktu MAKSIMAL pengurusan: 2 MINGGU (jawaban Q83 v1.39)
+✓ Jika lewat 2 minggu → alarm HRD + Owner
+```
+
+### Flow Detail (KRONOLOGIS)
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  FLOW AKTA KEMATIAN SANTA MARIA                                       ║
+╠═══════════════════════════════════════════════════════════════════════╣
+║                                                                       ║
+║  KASUS A — MENINGGAL DI RUMAH SAKIT:                                 ║
+║  1. Keluarga dapat surat kematian dari RS                             ║
+║  2. Keluarga serahkan surat ke SM (Petugas Akta)                      ║
+║  3. SM bawa ke DUKCAPIL                                               ║
+║  4. Dukcapil proses (durasi variable)                                 ║
+║  5. Akta jadi → Dukcapil serahkan ke SM                               ║
+║  6. SM simpan akta, tunggu consumer LUNAS                             ║
+║  7. Consumer lunas → keluarga datang ke SM bawa KTP + KK              ║
+║  8. SM serahkan akta ke keluarga                                      ║
+║                                                                       ║
+║  KASUS B — MENINGGAL DI RUMAH:                                        ║
+║  1. Keluarga minta surat kematian dari RT/RW                          ║
+║  2. Keluarga serahkan surat RT/RW ke SM                               ║
+║  3. SM bawa ke DUKCAPIL                                               ║
+║  4. Dukcapil proses                                                   ║
+║  5. Akta jadi → Dukcapil serahkan ke SM                               ║
+║  6. SM simpan akta, tunggu consumer LUNAS                             ║
+║  7. Consumer lunas → keluarga datang ke SM bawa KTP + KK              ║
+║  8. SM serahkan akta ke keluarga                                      ║
+║                                                                       ║
+║  WAJIB SAAT PENGAMBILAN AKTA:                                         ║
+║  • KTP asli penanggung jawab (untuk verifikasi)                       ║
+║  • KK asli keluarga (untuk verifikasi)                                ║
+║  • Foto KTP + KK di-upload ke sistem sebagai bukti serah terima       ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Schema update `order_death_cert_progress` (v1.39):**
+```sql
+ALTER TABLE order_death_cert_progress
+  -- Tempat meninggal: menentukan asal surat
+  ADD COLUMN death_location_type ENUM('rumah_sakit','rumah','tempat_lain') NOT NULL DEFAULT 'rumah_sakit',
+  ADD COLUMN death_certificate_source VARCHAR(255),  -- "RS Telogorejo" / "RT 05 RW 02 Pandanaran"
+
+  -- Dokumen sumber (dari keluarga)
+  ADD COLUMN source_document_received_at TIMESTAMP,  -- tanggal terima surat dari keluarga
+  ADD COLUMN source_document_photo_evidence_id UUID REFERENCES photo_evidences(id),
+
+  -- Dokumen saat serah terima akta ke keluarga
+  ADD COLUMN family_ktp_photo_evidence_id UUID REFERENCES photo_evidences(id),
+  ADD COLUMN family_kk_photo_evidence_id UUID REFERENCES photo_evidences(id),
+  ADD COLUMN family_ktp_received BOOLEAN DEFAULT FALSE,
+  ADD COLUMN family_kk_received BOOLEAN DEFAULT FALSE;
+```
+
+**Update ENUM `current_stage` (simplify untuk flow v1.40):**
+```sql
+-- Stages baru (hapus yang tidak relevan karena skip kelurahan/kecamatan):
+-- current_stage ENUM:
+--   'not_started'              - belum terima surat dari keluarga
+--   'source_doc_received'      - surat RS/RT-RW sudah diterima SM
+--   'submitted_to_dukcapil'    - SM sudah submit ke Dukcapil
+--   'processing_dukcapil'      - Dukcapil proses
+--   'cert_issued'              - akta jadi, SM sudah terima dari Dukcapil
+--   'waiting_payment'          - tunggu consumer lunas
+--   'waiting_ktp_kk_pickup'    - consumer lunas, tunggu keluarga bawa KTP+KK
+--   'handed_to_family'         - selesai, akta diserahkan
+```
+
+**Scheduler untuk max 2 minggu:**
+```php
+// Setiap hari cek akta yang belum selesai > 14 hari
+$schedule->command('death-cert:check-overdue')->dailyAt('09:00');
+
+// Logic:
+// SELECT * FROM order_death_cert_progress
+// WHERE current_stage NOT IN ('handed_to_family')
+//   AND started_at < NOW() - INTERVAL '14 days'
+//
+// → Alarm HRD + Owner: "Akta order [X] sudah {days} hari belum selesai"
+// → Update hrd_violations: petugas_akta_overdue
+```
+
+**System thresholds:**
+```
+death_cert_max_processing_days = 14   -- 2 minggu max
+death_cert_expected_processing_days = 7   -- 1 minggu ekspektasi
+```
+
+---
+
+## PART 3 — DURASI PROSESI (JAWABAN Q77 v1.39)
+
+```
+✓ Upacara kematian: 1 - 1.5 JAM (sekali sesi)
+✓ Durasi keseluruhan di rumah duka: 3, 5, atau 7 HARI
+  → Sesuai permintaan pihak keluarga
+  → Menjadi pilihan di PAKET:
+    - Paket 3 hari (tarif A)
+    - Paket 5 hari (tarif B)
+    - Paket 7 hari (tarif C)
+  → Harga paket sudah include durasi ini
+```
+
+**Schema update `packages`:**
+```sql
+ALTER TABLE packages
+  ADD COLUMN service_duration_days SMALLINT NOT NULL DEFAULT 3;
+  -- Nilai valid: 3, 5, 7 (dari owner)
+  -- Bisa paket khusus dengan durasi custom (untuk layanan custom)
+```
+
+**Schema update `orders`:**
+```sql
+-- v1.13 sudah ada estimated_duration_hours, tapi itu untuk 1 sesi eksekusi
+-- Tambahkan:
+ALTER TABLE orders
+  ADD COLUMN service_duration_days SMALLINT,  -- snapshot dari packages, 3/5/7
+  ADD COLUMN ceremony_duration_minutes SMALLINT DEFAULT 90;  -- 60-90 menit
+```
+
+**Auto-generate tukang_jaga_shifts (v1.29):**
+```
+Saat SO konfirmasi order:
+- Baca orders.service_duration_days
+- Generate shifts: 2 shift/hari × N hari = total shifts
+  Contoh paket 5 hari = 10 shift (pagi + malam × 5)
+- Assign tukang jaga otomatis dari pool
+```
+
+---
+
+## PART 4 — BARANG TITIPAN SUPPLIER (KACANG)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  ONLY SUPPLIER KACANG YANG MENITIPKAN BARANG                          ║
+║                                                                       ║
+║  Flow:                                                                ║
+║  1. Supplier kacang KIRIM kacang ke KANTOR SM                         ║
+║  2. Stok kantor bertambah (owner_role = 'super_admin')                ║
+║  3. Saat butuh untuk order → TRANSFER dari stok kantor ke stok gudang ║
+║  4. Gudang yang distribusi ke order                                   ║
+║                                                                       ║
+║  TIDAK ADA barang titipan supplier lain selain kacang.                ║
+║  Ini tipe "consignment" spesifik — stok tetap milik SM saat sudah     ║
+║  dikirim supplier (bukan model konsinyasi "bayar setelah terjual").    ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Schema: inter-location transfer:**
+```sql
+CREATE TABLE stock_inter_location_transfers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_owner_role VARCHAR(50) NOT NULL,          -- 'super_admin' (kantor)
+  to_owner_role VARCHAR(50) NOT NULL,            -- 'gudang'
+  stock_item_id UUID REFERENCES stock_items(id),
+  quantity DECIMAL(10,2) NOT NULL,
+
+  requested_by UUID REFERENCES users(id),        -- role tujuan yang request
+  approved_by UUID REFERENCES users(id),         -- role asal yang approve
+  transferred_by UUID REFERENCES users(id),      -- yang fisik pindahkan
+  received_by UUID REFERENCES users(id),         -- yang terima di tujuan
+
+  requested_at TIMESTAMP NOT NULL,
+  transferred_at TIMESTAMP,
+  received_at TIMESTAMP,
+
+  photo_evidence_id UUID REFERENCES photo_evidences(id),
+
+  -- Supplier asal (untuk tracking barang titipan kacang)
+  source_supplier_id UUID NULLABLE REFERENCES users(id),
+  source_consignment_batch VARCHAR(100),         -- batch/PO number dari supplier
+
+  status ENUM('requested','approved','in_transit','completed','cancelled') DEFAULT 'requested',
+  notes TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+**API:**
+```
+POST   /role-stock/transfer-request              -- Gudang request transfer dari kantor
+  Body: { stock_item_id, quantity, notes }
+  → Auto-set from='super_admin', to='gudang'
+PUT    /admin/stock-transfers/{id}/approve        -- Super Admin approve
+PUT    /role-stock/transfers/{id}/mark-transferred -- transporter mark
+PUT    /gudang/stock-transfers/{id}/confirm-receive -- Gudang confirm terima
+```
+
+---
+
+## PART 5 — SOP KETERLAMBATAN BAYAR CONSUMER (JAWABAN Q69)
+
+```
+✓ Deadline bayar: 3 hari setelah prosesi (v1.33)
+✓ KETERLAMBATAN TOLERANSI: 7 HARI (total = 3 + 7 = 10 hari maksimal)
+✓ Lewat 7 hari keterlambatan → eskalasi (SOP detail belum final)
+```
+
+**System thresholds:**
+```
+consumer_payment_grace_days_after_deadline = 7   -- toleransi keterlambatan
+consumer_payment_total_max_days = 10              -- 3 deadline + 7 toleransi
+```
+
+**Scheduler:**
+```php
+// Setiap hari cek order completed yang belum lunas
+$schedule->command('consumer-payment:check-overdue')->dailyAt('09:00');
+
+// Logic:
+// - Day H+0..H+3 (deadline): normal
+// - Day H+4..H+10 (toleransi 7 hari): reminder WA ke consumer harian
+//   → Pakai template ORDER_PAYMENT_REMINDER
+//   → Escalate severity dengan hari (NORMAL → HIGH → ALARM)
+// - Day H+11 (lewat toleransi): alarm Purchasing + Owner
+//   → Petugas Akta STOP serah terima (sudah gated lunas, tidak berubah)
+//   → Mungkin blacklist? (PENDING SOP final)
+```
+
+**Tabel untuk tracking reminder:**
+```sql
+CREATE TABLE consumer_payment_reminders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  reminder_day SMALLINT NOT NULL,        -- H+4, H+5, ... H+10
+  reminder_date DATE NOT NULL,
+  sent_via ENUM('whatsapp','sms','phone','app_notif') NOT NULL,
+  sent_by UUID REFERENCES users(id),
+  recipient_phone VARCHAR(30),
+  template_used VARCHAR(50),
+  message_content TEXT,
+  consumer_responded BOOLEAN DEFAULT FALSE,
+  response_notes TEXT,
+  created_at TIMESTAMP,
+  UNIQUE(order_id, reminder_day)
+);
+```
+
+---
+
+## PART 6 — FORM BIAYA KERUGIAN (BARANG RUSAK/HILANG)
+
+```
+╔═══════════════════════════════════════════════════════════════════════╗
+║  OWNER AKAN BERIKAN FORM BIAYA KERUGIAN                               ║
+║  ⏳ MOHON KONFIRMASI: Owner akan kirim template form                  ║
+║                                                                       ║
+║  Sementara spec v1.39 (stock_damage_logs, stock_lost_logs) TETAP      ║
+║  berlaku. Saat form resmi diberikan owner, struktur akan disesuaikan  ║
+║  agar input form = kolom di database.                                 ║
+╚═══════════════════════════════════════════════════════════════════════╝
+```
+
+**Pending:** Form biaya kerugian dari owner → akan update schema `stock_damage_logs` & `stock_lost_logs` v1.39 untuk match form tersebut.
+
+---
+
+## TABEL BARU v1.40
+
+| Tabel | Fungsi |
+|-------|--------|
+| `photographer_daily_wages` | Upah tukang foto per hari (banyak sesi/order) |
+| `stock_opname_sessions` | Sesi stock opname 6-bulanan |
+| `stock_opname_items` | Detail item per sesi opname |
+| `order_location_phases` | Multi rumah duka untuk layanan custom |
+| `musician_wage_config` | Tarif musisi per orang per sesi |
+| `order_musician_sessions` | Sesi musisi per order |
+| `stock_inter_location_transfers` | Transfer stok antar lokasi (termasuk barang titipan kacang) |
+| `consumer_payment_reminders` | Log reminder pembayaran consumer (H+4..H+10) |
+
+## TABEL DIPERKAYA v1.40
+
+| Tabel | Perubahan |
+|-------|-----------|
+| `orders` | + is_custom_service, custom_service_notes, custom_service_extra_fee, service_duration_days, ceremony_duration_minutes |
+| `packages` | + service_duration_days (3/5/7) |
+| `tukang_jaga_shifts` | + meals_included (default false) |
+| `order_death_cert_progress` | + death_location_type, death_certificate_source, source_document_*, family_ktp/kk_* |
+
+## TABEL/FITUR DIHAPUS v1.40
+
+| Item | Alasan |
+|------|--------|
+| Role `pemuka_agama` dari pool internal | Keluarga langsung bayar ke pemuka agama, bukan via SM |
+| Aturan "SM bayar pemuka agama" (v1.39 PART 14 point 8) | Koreksi — SM tidak bayar, keluarga langsung bayar |
+
+## ATURAN BISNIS v1.40
+
+```
+1. PEMUKA AGAMA: Tidak ada internal SM. Keluarga hubungi & bayar sendiri.
+   SM hanya fasilitasi koordinasi jadwal.
+
+2. TUKANG FOTO: Upah per hari, bukan per order. Bisa handle multi-order/hari.
+
+3. STOCK OPNAME: Setiap 6 bulan (H1 & H2). Semua role dengan stok wajib opname.
+
+4. BIAYA ADMIN AKTA: Include di harga paket. Keluarga tidak ditagih terpisah.
+
+5. AKTA FLOW: RS/RT-RW → SM → Dukcapil → SM → Keluarga (setelah lunas + bawa KTP+KK)
+   Max durasi: 2 minggu. Lewat → alarm HRD + Owner.
+
+6. PINDAH RUMAH DUKA: MEMUNGKINKAN via layanan custom.
+   Extra fee manual oleh SO, dicatat di orders.custom_service_extra_fee.
+
+7. UPACARA: 1-1.5 jam per sesi.
+
+8. DURASI RUMAH DUKA: 3/5/7 hari sesuai paket. Jumlah shift tukang jaga
+   auto-generate (2 shift/hari × N hari).
+
+9. BARANG TITIPAN KACANG: Supplier kirim ke kantor → transfer ke gudang saat butuh.
+   Stok milik SM sejak sudah dikirim supplier (bukan konsinyasi finansial).
+
+10. TUKANG JAGA: Makan/minum tidak disediakan SM, sudah include dalam upah.
+    Rekrut baru via HRD. Sakit → lapor HRD → HRD cari backup.
+
+11. MUSISI: Bayaran per orang per sesi (bukan per grup per order).
+
+12. SOP KETERLAMBATAN BAYAR: Toleransi 7 hari setelah deadline 3 hari.
+    Total max 10 hari. Reminder WA harian day H+4..H+10.
+
+13. GUDANG & DRIVER: Tidak ada libur, 24/7 standby.
+    Rotasi internal untuk weekend/libur nasional.
+```
+
+## PENDING ITEMS v1.40
+
+### Baru Muncul di v1.40
+| # | Item | Konfirmasi |
+|---|------|-----------|
+| v1.40-1 | Template form biaya kerugian barang rusak/hilang | Owner akan kirim |
+| v1.40-2 | Tarif harian tukang foto (rate_per_day + bonus extra session) | Belum dikonfirmasi |
+| v1.40-3 | Rate per orang per sesi untuk musisi & MC | Belum dikonfirmasi |
+| v1.40-4 | Extra fee nominal untuk layanan custom (pindah rumah duka) | Belum dikonfirmasi |
+| v1.40-5 | SOP escalation jika consumer tidak bayar > H+10 | Belum dikonfirmasi |
+
+### Masih PENDING dari v1.39 (belum terjawab)
+| # | Item | Status |
+|---|------|--------|
+| Q2 | Nominal iuran keanggotaan per bulan | Belum dikonfirmasi |
+| Q5 | Profit margin Anggota vs Non-Anggota | Belum dikonfirmasi |
+| Q8 | Detail isi paket Anggota vs Non-Anggota | Belum dikonfirmasi |
+| Q9 | List add-on + harga | Belum dikonfirmasi |
+| Q13 | Detail shift 24 jam SO | Belum dikonfirmasi |
+| Q15 | Target harian/bulanan SO | Belum dikonfirmasi |
+| Q18 | Commission/bonus SO formula | Belum dikonfirmasi |
+| Q19 | Jumlah staff gudang | Belum dikonfirmasi |
+| Q25 | List barang kantor vs gudang | Belum dikonfirmasi |
+| Q26 | Jumlah staff Lafiore | Belum dikonfirmasi |
+| Q29 | Jumlah driver per lokasi | Belum dikonfirmasi |
+| Q41 | Database tukang foto (akan dibangun) | Belum dikonfirmasi |
+| Q52 | Jumlah musisi/grup | Belum dikonfirmasi |
+| Q54 | Alat musik (sediakan/bawa) | Belum dikonfirmasi |
+| Q60 | Gaji pokok per role | Belum dikonfirmasi |
+| Q62 | Progression teguran | Belum dikonfirmasi |
+| Q63 | Bonus formula | Belum dikonfirmasi |
+| Q64 | Detail shift security | Belum dikonfirmasi |
+
+### Terjawab di v1.40
+| Q# | Pertanyaan | Jawaban |
+|----|-----------|---------|
+| Q23 | Consignment supplier | Hanya supplier kacang, via transfer kantor→gudang |
+| Q38 | Jumlah pemuka agama | Tidak ada internal, keluarga bawa sendiri |
+| Q39 | Nominal honor pemuka agama | Keluarga bayar langsung, bukan via SM |
+| Q42 | Upah tukang foto | Per hari (bukan per order) |
+| Q48 | Makan minum tukang jaga | Tidak disediakan SM (sudah di upah) |
+| Q56 | Durasi akta rata-rata | 1-2 minggu |
+| Q59 | List instansi akta | RS/RT-RW → Dukcapil (skip kelurahan/kecamatan) |
+| Q69 | SOP keterlambatan bayar | Toleransi 7 hari (total 10 hari max) |
+| Q75 | Multi rumah duka | Memungkinkan via layanan custom |
+| Q77 | Durasi prosesi | Upacara 1-1.5 jam, durasi rumah duka 3/5/7 hari |
+| Q83 | Max durasi akta | 2 minggu |
+
+## CHANGELOG v1.40
+
+### v1.40 — Koreksi Operasional: Pemuka Agama External Only, Upah Tukang Foto Harian, Flow Akta Final
+
+**Koreksi dari v1.39:**
+- Hapus pemuka agama internal SM — keluarga bayar langsung ke pemuka agama
+- Stock opname MINGGUAN → 6 BULANAN
+- Upah tukang foto PER ORDER → PER HARI (banyak sesi)
+- Biaya admin akta: keluarga tanggung → INCLUDE di paket
+- Multi rumah duka: TIDAK SUPPORT → MEMUNGKINKAN via layanan custom
+
+**Fitur Baru / Klarifikasi:**
+- Flow akta lengkap: 2 jalur (RS vs Rumah) → Dukcapil → SM → Keluarga (bawa KTP+KK)
+- Durasi prosesi: 1-1.5 jam upacara, 3/5/7 hari di rumah duka sesuai paket
+- Barang titipan kacang: kantor → transfer ke gudang saat butuh
+- Tukang jaga: HRD rekrut & handle sakit, makan include di upah
+- Musisi: bayaran per orang per sesi
+- SOP keterlambatan: toleransi 7 hari setelah deadline 3 hari
+
+**Tabel Baru:** 8
+**Tabel Diperkaya:** 4
+**Tabel/Fitur Dihapus:** Role internal pemuka_agama
+
+**Pending Terselesaikan:** 11 pertanyaan v1.39
+**Pending Baru:** 5 item v1.40
 
 ---
 

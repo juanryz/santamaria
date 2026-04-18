@@ -13,6 +13,8 @@ import 'so_crm_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 import '../../../shared/screens/employee_command_screen.dart';
 import '../../../shared/screens/role_inventory_screen.dart';
+import 'membership_list_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class SODashboardScreen extends StatefulWidget {
   const SODashboardScreen({super.key});
@@ -219,6 +221,30 @@ class _SODashboardScreenState extends State<SODashboardScreen> {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleSO))),
             child: const Icon(Icons.campaign, color: AppColors.roleSO, size: 20),
+          ),
+          const SizedBox(width: 8),
+          // v1.39 — Membership
+          GlassWidget(
+            borderRadius: 12,
+            blurSigma: 10,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(8),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MembershipListScreen())),
+            child: const Icon(Icons.card_membership, color: AppColors.roleSO, size: 20),
+          ),
+          const SizedBox(width: 8),
+          // v1.39 — My Leaves (self-service)
+          GlassWidget(
+            borderRadius: 12,
+            blurSigma: 10,
+            tint: AppColors.glassWhite,
+            borderColor: AppColors.glassBorder,
+            padding: const EdgeInsets.all(8),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
+            child: const Icon(Icons.event_available, color: AppColors.roleSO, size: 20),
           ),
           const SizedBox(width: 8),
           GlassWidget(

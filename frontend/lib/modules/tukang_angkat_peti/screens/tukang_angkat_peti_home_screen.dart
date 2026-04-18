@@ -9,6 +9,7 @@ import '../../../shared/widgets/glass_status_badge.dart';
 import '../../../providers/auth_provider.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import '../../kpi/screens/kpi_dashboard_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class TukangAngkatPetiHomeScreen extends StatefulWidget {
   const TukangAngkatPetiHomeScreen({super.key});
@@ -269,6 +270,12 @@ class _TukangAngkatPetiHomeScreenState
         title: 'Koordinator Angkat Peti',
         accentColor: _roleColor,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.event_available, color: AppColors.brandPrimary),
+            tooltip: 'Cuti & Izin Saya',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart, color: AppColors.brandPrimary),
             onPressed: () => Navigator.push(context,

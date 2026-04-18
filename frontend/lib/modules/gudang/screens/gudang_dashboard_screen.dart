@@ -13,7 +13,11 @@ import 'stock_form_screen.dart';
 import 'vehicle_maintenance_screen.dart';
 import 'gudang_receive_screen.dart';
 import 'gudang_item_return_screen.dart';
+import 'stock_opname_screen.dart';
+import 'stock_transfer_screen.dart';
+import 'stock_damage_report_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class GudangDashboardScreen extends StatefulWidget {
   const GudangDashboardScreen({super.key});
@@ -336,6 +340,19 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
             }),
             _quickMenuChip(Icons.build, 'Maintenance Kendaraan', () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleMaintenanceScreen()));
+            }),
+            // ── v1.40 ──
+            _quickMenuChip(Icons.event_note, 'Stock Opname Semester', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockOpnameScreen()));
+            }),
+            _quickMenuChip(Icons.compare_arrows, 'Transfer Stok', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockTransferScreen()));
+            }),
+            _quickMenuChip(Icons.qr_code_scanner, 'Lapor Barang Rusak', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockDamageReportScreen()));
+            }),
+            _quickMenuChip(Icons.event_available, 'Cuti & Izin', () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const MyLeavesScreen()));
             }),
           ],
         ),

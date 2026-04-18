@@ -16,6 +16,8 @@ import 'hrd_employee_list_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
 import 'hrd_payroll_screen.dart';
 import 'hrd_salary_config_screen.dart';
+import 'leaves_approval_screen.dart';
+import '../../../shared/screens/my_leaves_screen.dart';
 
 class HrdDashboardScreen extends StatefulWidget {
   const HrdDashboardScreen({super.key});
@@ -134,6 +136,9 @@ class _HrdDashboardScreenState extends State<HrdDashboardScreen> {
       {'icon': Icons.schedule, 'label': 'Shift & Lokasi', 'screen': const HrdShiftManagementScreen()},
       {'icon': Icons.payments, 'label': 'Payroll', 'screen': const HrdPayrollScreen()},
       {'icon': Icons.monetization_on, 'label': 'Konfigurasi Gaji', 'screen': const HrdSalaryConfigScreen()},
+      // v1.39 — Cuti & Izin
+      {'icon': Icons.event_busy, 'label': 'Approval Cuti & Izin', 'screen': const LeavesApprovalScreen()},
+      {'icon': Icons.event_available, 'label': 'Cuti Saya', 'screen': const MyLeavesScreen()},
     ];
 
     return Column(
