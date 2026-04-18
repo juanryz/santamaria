@@ -68,9 +68,10 @@ class OrderController extends Controller
 
             // 3. Buat order
             $orderNumber = 'SM-' . date('Ymd') . '-' . strtoupper(Str::random(4));
-            // Upload KTP & KK photos
-            $ktpPath = $request->file('ktp_photo')->store('orders/documents', 's3');
-            $kkPath = $request->file('kk_photo')->store('orders/documents', 's3');
+            // Upload KTP & KK photos (v1.40: via StorageService → R2/public)
+            $storage = app(\App\Services\StorageService::class);
+            $ktpPath = $storage->uploadConsumerDoc($request->file('ktp_photo'), $orderNumber, 'ktp');
+            $kkPath = $storage->uploadConsumerDoc($request->file('kk_photo'), $orderNumber, 'kk');
 
             $order = Order::create([
                 'order_number'    => $orderNumber,

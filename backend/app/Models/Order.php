@@ -115,6 +115,18 @@ class Order extends Model
         'acceptance_signed_relation',
         'acceptance_signature_path',
         'acceptance_terms_version',
+        // v1.40 — layanan custom, durasi, transport luar kota
+        'is_custom_service',
+        'custom_service_notes',
+        'custom_service_extra_fee',
+        'service_duration_days',
+        'ceremony_duration_minutes',
+        'is_out_of_city',
+        'out_of_city_origin',
+        'out_of_city_distance_km',
+        'out_of_city_transport_fee',
+        'coffin_size_id',
+        'lifters_count',
     ];
 
     protected $casts = [
@@ -141,6 +153,15 @@ class Order extends Model
         'death_cert_submitted'       => 'boolean',
         'extra_approval_total'       => 'decimal:2',
         'acceptance_signed_at'       => 'datetime',
+        // v1.40
+        'is_custom_service'          => 'boolean',
+        'custom_service_extra_fee'   => 'decimal:2',
+        'service_duration_days'      => 'integer',
+        'ceremony_duration_minutes'  => 'integer',
+        'is_out_of_city'             => 'boolean',
+        'out_of_city_distance_km'    => 'decimal:2',
+        'out_of_city_transport_fee'  => 'decimal:2',
+        'lifters_count'              => 'integer',
     ];
 
     protected static function boot()
@@ -284,6 +305,38 @@ class Order extends Model
     public function galleryLinks()
     {
         return $this->hasMany(OrderGalleryLink::class);
+    }
+
+    // v1.40 relationships
+
+    public function coffinSize()
+    {
+        return $this->belongsTo(CoffinSizeMaster::class, 'coffin_size_id');
+    }
+
+    public function locationPhases()
+    {
+        return $this->hasMany(OrderLocationPhase::class)->orderBy('phase_sequence');
+    }
+
+    public function musicianSessions()
+    {
+        return $this->hasMany(OrderMusicianSession::class)->orderBy('session_date');
+    }
+
+    public function paymentReminders()
+    {
+        return $this->hasMany(ConsumerPaymentReminder::class)->orderBy('reminder_day');
+    }
+
+    public function deathCertProgress()
+    {
+        return $this->hasOne(OrderDeathCertProgress::class);
+    }
+
+    public function locationPresenceLogs()
+    {
+        return $this->hasMany(LocationPresenceLog::class)->orderBy('timestamp');
     }
 
     public function acceptanceLetter()

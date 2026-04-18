@@ -9,22 +9,97 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+/**
+ * File storage service — target utama Cloudflare R2 (production).
+ * Fallback ke disk 'public' kalau R2 belum dikonfigurasi (dev/local).
+ *
+ * Disk resolution urutan:
+ *   1. env(FILESYSTEM_DISK) kalau di-set eksplisit
+ *   2. 'r2' kalau R2_ACCESS_KEY_ID terisi
+ *   3. 'public' sebagai fallback aman
+ *
+ * Untuk kompresi foto: dilakukan di sisi Flutter (flutter_image_compress)
+ * sebelum upload. Backend hanya validate size cap.
+ */
 class StorageService
 {
     /**
-     * Upload photo to Cloudflare R2.
+     * Max file size per upload (MB). Bisa di-override per context.
+     */
+    private const MAX_FILE_MB = 10;
+
+    /**
+     * Resolve disk yang dipakai untuk upload.
+     * Prioritas: env > r2 (kalau configured) > public.
+     */
+    public function resolveDisk(): string
+    {
+        $envDisk = env('FILESYSTEM_DISK');
+        if ($envDisk && $envDisk !== 'local' && config("filesystems.disks.{$envDisk}")) {
+            return $envDisk;
+        }
+
+        // R2 configured?
+        if (config('filesystems.disks.r2.key')) {
+            return 'r2';
+        }
+
+        // Fallback dev
+        return 'public';
+    }
+
+    /**
+     * Upload photo to active disk.
+     *
+     * @param UploadedFile $file
+     * @param string       $path  Target path (tanpa leading slash)
+     * @return string Final path yang disimpan di disk
+     * @throws \RuntimeException Kalau file size melewati limit
+     */
+    public function putPhoto(UploadedFile $file, string $path): string
+    {
+        $this->assertSize($file);
+
+        $disk = $this->resolveDisk();
+        Storage::disk($disk)->put($path, file_get_contents($file->path()));
+        return $path;
+    }
+
+    /**
+     * Upload photo utk order (generic — bukti lapangan, dll).
      */
     public function uploadOrderPhoto(UploadedFile $file, string $orderId): string
     {
         $path = "orders/{$orderId}/photos/" . Str::uuid() . '.' . $file->extension();
-        
-        // Since we are in local development and R2 might not be set up yet, 
-        // we check if R2 is configured, otherwise fallback to local 'public'
-        $disk = config('filesystems.disks.r2.key') ? 'r2' : 'public';
-        
-        Storage::disk($disk)->put($path, file_get_contents($file->path()));
-        
-        return $path;
+        return $this->putPhoto($file, $path);
+    }
+
+    /**
+     * Upload photo_evidences (v1.35) — bukti universal dengan geofencing.
+     */
+    public function uploadPhotoEvidence(UploadedFile $file, string $context, ?string $orderId = null): string
+    {
+        $folder = $orderId ? "orders/{$orderId}/evidences/{$context}" : "evidences/{$context}";
+        $path = "{$folder}/" . now()->format('YmdHis') . '_' . Str::random(8) . '.' . $file->extension();
+        return $this->putPhoto($file, $path);
+    }
+
+    /**
+     * Upload selfie presensi (foto kecil, biasanya < 1 MB karena sudah compressed client).
+     */
+    public function uploadAttendanceSelfie(UploadedFile $file, string $userId): string
+    {
+        $path = "attendance/{$userId}/" . now()->format('Y/m/d') . '/' . Str::uuid() . '.' . $file->extension();
+        return $this->putPhoto($file, $path);
+    }
+
+    /**
+     * Upload dokumen consumer (KTP, KK, bukti bayar).
+     */
+    public function uploadConsumerDoc(UploadedFile $file, string $orderId, string $docType): string
+    {
+        $path = "orders/{$orderId}/docs/{$docType}." . $file->extension();
+        return $this->putPhoto($file, $path);
     }
 
     /**
@@ -33,13 +108,20 @@ class StorageService
      */
     public function uploadQuotePhoto(UploadedFile $file, string $quoteId): string
     {
-        $disk = config('filesystems.disks.r2.key') ? 'r2' : 'public';
         $path = "quotes/{$quoteId}/product." . $file->extension();
+        return $this->putPhoto($file, $path);
+    }
 
-        // Delete previous photo if exists (overwrite — same path).
-        Storage::disk($disk)->put($path, file_get_contents($file->path()));
-
-        return $path;
+    /**
+     * Delete file dari disk aktif.
+     */
+    public function delete(string $path): bool
+    {
+        $disk = $this->resolveDisk();
+        if (! Storage::disk($disk)->exists($path)) {
+            return false;
+        }
+        return Storage::disk($disk)->delete($path);
     }
 
     /**
@@ -49,13 +131,45 @@ class StorageService
      */
     public function getSignedUrl(string $path): string
     {
-        if (!config('filesystems.disks.r2.key')) {
+        $disk = $this->resolveDisk();
+
+        if ($disk === 'public' || $disk === 'local') {
             return asset("storage/{$path}");
         }
 
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $r2 */
-        $r2 = Storage::disk('r2');
-        return $r2->temporaryUrl($path, now()->addHours(24));
+        /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+        $storage = Storage::disk($disk);
+        return $storage->temporaryUrl($path, now()->addHours(24));
+    }
+
+    /**
+     * Get direct public URL (tanpa signed). Untuk file public di R2 dengan custom domain.
+     * Fallback ke signed URL kalau tidak available.
+     */
+    public function getPublicUrl(string $path): string
+    {
+        $disk = $this->resolveDisk();
+        $publicUrl = config("filesystems.disks.{$disk}.url");
+
+        if ($publicUrl) {
+            return rtrim($publicUrl, '/') . '/' . ltrim($path, '/');
+        }
+
+        return $this->getSignedUrl($path);
+    }
+
+    /**
+     * Validate file size — throw kalau melewati cap.
+     */
+    private function assertSize(UploadedFile $file): void
+    {
+        $maxBytes = self::MAX_FILE_MB * 1024 * 1024;
+        if ($file->getSize() > $maxBytes) {
+            throw new \RuntimeException(
+                "File terlalu besar (max " . self::MAX_FILE_MB . "MB). "
+                . "Kompres foto di Flutter sebelum upload."
+            );
+        }
     }
 
     /**

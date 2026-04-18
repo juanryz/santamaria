@@ -392,6 +392,7 @@ class DatabaseSeeder extends Seeder
             KpiMetricSeeder::class,
             MasterDataV117Seeder::class,
             AttendanceVehicleSeeder::class,
+            V140Seeder::class,
         ]);
     }
 }

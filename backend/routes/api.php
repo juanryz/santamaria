@@ -661,6 +661,67 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
             Route::put('/{id}/confirm',                              [\App\Http\Controllers\Vendor\WageClaimController::class, 'confirmReceived']);
         });
 
+        // ── v1.40 — Coffin Size Master (Super Admin CRUD) ───────────────────
+        Route::middleware('role:' . UserRole::SUPER_ADMIN->value)
+            ->prefix('admin/coffin-sizes')->group(function () {
+            Route::get('/',               [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'index']);
+            Route::post('/',              [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'store']);
+            Route::get('/{id}',           [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'show']);
+            Route::put('/{id}',           [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'update']);
+            Route::delete('/{id}',        [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'destroy']);
+        });
+        // Read-only untuk role lain (dipakai SO saat konfirmasi order)
+        Route::middleware('auth:sanctum')
+            ->get('coffin-sizes',          [\App\Http\Controllers\Admin\CoffinSizeMasterController::class, 'index']);
+
+        // ── v1.40 — Location Presence (shared check-in/out rumah duka/TPU) ─
+        Route::middleware(['auth:sanctum'])
+            ->prefix('presence')->group(function () {
+            Route::get('/',                       [\App\Http\Controllers\Attendance\LocationPresenceController::class, 'index']);
+            Route::get('/status',                 [\App\Http\Controllers\Attendance\LocationPresenceController::class, 'currentStatus']);
+            Route::post('/check-in',              [\App\Http\Controllers\Attendance\LocationPresenceController::class, 'checkIn']);
+            Route::post('/check-out',             [\App\Http\Controllers\Attendance\LocationPresenceController::class, 'checkOut']);
+            Route::get('/orders/{orderId}',       [\App\Http\Controllers\Attendance\LocationPresenceController::class, 'byOrder']);
+        });
+
+        // ── v1.24/v1.40 — Order Vendor Assignments (SO kelola vendor per order) ─
+        Route::middleware('role:' . implode(',', [UserRole::SERVICE_OFFICER->value, UserRole::SUPER_ADMIN->value]))
+            ->prefix('so/orders/{orderId}/vendor-assignments')->group(function () {
+            Route::get('/',                       [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'index']);
+            Route::post('/',                      [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'store']);
+            Route::put('/{assignmentId}',         [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'update']);
+            Route::put('/{assignmentId}/confirm', [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'confirm']);
+            Route::put('/{assignmentId}/decline', [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'decline']);
+            Route::put('/{assignmentId}/wa-contacted',
+                                                  [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'markWaContacted']);
+            Route::delete('/{assignmentId}',      [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'destroy']);
+        });
+        Route::middleware('role:' . implode(',', [UserRole::SERVICE_OFFICER->value, UserRole::SUPER_ADMIN->value]))
+            ->prefix('so')->group(function () {
+            Route::get('/vendor-roles',           [\App\Http\Controllers\ServiceOfficer\OrderVendorAssignmentController::class, 'availableRoles']);
+        });
+
+        // ── v1.40 — Photographer Daily Wages (Purchasing review & pay) ─────
+        Route::middleware('role:' . implode(',', [UserRole::PURCHASING->value, UserRole::FINANCE->value]))
+            ->prefix('purchasing/photographer-wages')->group(function () {
+            Route::get('/',                       [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'index']);
+            Route::get('/pending',                [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'pending']);
+            Route::get('/summary',                [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'pendingSummary']);
+            Route::get('/{id}',                   [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'show']);
+            Route::put('/{id}/finalize',          [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'finalize']);
+            Route::put('/{id}/pay',               [\App\Http\Controllers\Purchasing\PhotographerWageController::class, 'pay']);
+        });
+
+        // ── v1.40 — Consumer Payment Reminders (Finance/Purchasing log H+4..H+10) ─
+        Route::middleware('role:' . implode(',', [UserRole::PURCHASING->value, UserRole::FINANCE->value, UserRole::SERVICE_OFFICER->value]))
+            ->prefix('finance/payment-reminders')->group(function () {
+            Route::get('/overdue',                [\App\Http\Controllers\Finance\ConsumerPaymentReminderController::class, 'overdueOrders']);
+            Route::get('/orders/{orderId}',       [\App\Http\Controllers\Finance\ConsumerPaymentReminderController::class, 'index']);
+            Route::post('/orders/{orderId}',      [\App\Http\Controllers\Finance\ConsumerPaymentReminderController::class, 'store']);
+            Route::put('/orders/{orderId}/{reminderId}/response',
+                                                  [\App\Http\Controllers\Finance\ConsumerPaymentReminderController::class, 'logResponse']);
+        });
+
         // ── v1.14 — Super Admin Master Data CRUD (v1.27: Owner read-only) ────
         Route::middleware('role:' . implode(',', [UserRole::SUPER_ADMIN->value, UserRole::OWNER->value]))
             ->prefix('admin/master')->group(function () {

@@ -12,6 +12,9 @@ import '../../tukang_foto/screens/gallery_link_screen.dart';
 import 'so_amendment_screen.dart';
 import 'custom_service_phases_screen.dart';
 import 'out_of_city_transport_screen.dart';
+import 'musician_sessions_screen.dart';
+import 'vendor_assignment_screen.dart';
+import '../../../shared/screens/location_presence_screen.dart';
 
 class SOOrderDetailScreen extends StatefulWidget {
   final String orderId;
@@ -453,6 +456,42 @@ class _SOOrderDetailScreenState extends State<SOOrderDetailScreen> {
                   backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
                   onPressed: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => OutOfCityTransportScreen(
+                      orderId: widget.orderId,
+                      orderNumber: order['order_number'] ?? '-',
+                    ),
+                  )),
+                ),
+                // v1.40 — Sesi Musisi
+                ActionChip(
+                  avatar: const Icon(Icons.music_note, size: 18, color: AppColors.roleSO),
+                  label: const Text('Sesi Musisi', style: TextStyle(fontSize: 12)),
+                  backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => MusicianSessionsScreen(
+                      orderId: widget.orderId,
+                      orderNumber: order['order_number'] ?? '-',
+                    ),
+                  )),
+                ),
+                // v1.24/v1.40 — Vendor Assignments (Internal + External)
+                ActionChip(
+                  avatar: const Icon(Icons.people_outline, size: 18, color: AppColors.roleSO),
+                  label: const Text('Tim Vendor', style: TextStyle(fontSize: 12)),
+                  backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => VendorAssignmentScreen(
+                      orderId: widget.orderId,
+                      orderNumber: order['order_number'] ?? '-',
+                    ),
+                  )),
+                ),
+                // v1.40 — Presensi Lokasi (check-in/out di rumah duka)
+                ActionChip(
+                  avatar: const Icon(Icons.location_on_outlined, size: 18, color: AppColors.roleSO),
+                  label: const Text('Presensi Lokasi', style: TextStyle(fontSize: 12)),
+                  backgroundColor: AppColors.roleSO.withValues(alpha: 0.08),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => LocationPresenceScreen(
                       orderId: widget.orderId,
                       orderNumber: order['order_number'] ?? '-',
                     ),

@@ -5,6 +5,8 @@ import '../../../shared/widgets/glass_widget.dart';
 import 'admin_package_management_screen.dart';
 import 'admin_fleet_management_screen.dart';
 import 'admin_threshold_screen.dart';
+import 'coffin_size_master_screen.dart';
+import 'musician_wage_config_screen.dart';
 
 class _MasterItem {
   final IconData icon;
@@ -38,6 +40,20 @@ class AdminMasterDataScreen extends StatelessWidget {
           'Manajemen Armada',
           'Daftar kendaraan & status',
           () => const AdminFleetManagementScreen(),
+        ),
+        // v1.40 — master ukuran peti + rekomendasi tukang angkat
+        _MasterItem(
+          Icons.inventory_outlined,
+          'Ukuran Peti',
+          'Label, panjang, rekomendasi pekerja angkat',
+          () => const CoffinSizeMasterScreen(),
+        ),
+        // v1.40 — tarif musisi per orang per sesi
+        _MasterItem(
+          Icons.music_note_outlined,
+          'Tarif Musisi',
+          'Rate per orang per sesi (musisi, MC, paduan suara)',
+          () => const MusicianWageConfigScreen(),
         ),
       ];
 

@@ -136,8 +136,12 @@ class ArticleController extends Controller
             'cover_image' => 'required|image|max:5120', // max 5MB
         ]);
 
-        $path = $request->file('cover_image')
-            ->store("articles/{$article->id}/cover", 's3');
+        // v1.40: upload via StorageService → R2 (resolve disk via env).
+        $file = $request->file('cover_image');
+        $path = $this->storage->putPhoto(
+            $file,
+            "articles/{$article->id}/cover/" . uniqid('cover_') . '.' . $file->extension()
+        );
 
         // Hapus cover lama jika ada
         if ($article->cover_image_path) {

@@ -25,6 +25,23 @@ class OrderAutoGenerateService
         $this->generateAttendances($order);
         $this->generateEquipmentItems($order);
         $this->generateBillingItems($order);
+        $this->generateTukangJagaShifts($order);
+    }
+
+    /**
+     * v1.40: Auto-generate tukang jaga shifts
+     * (2 shift/hari × service_duration_days).
+     */
+    private function generateTukangJagaShifts(Order $order): void
+    {
+        try {
+            (new TukangJagaShiftGenerator())->generate($order);
+        } catch (\Throwable $e) {
+            Log::error('Failed to generate tukang jaga shifts', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

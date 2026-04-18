@@ -122,8 +122,13 @@ class WageClaimController extends Controller
 
         $receiptPath = null;
         if ($request->hasFile('receipt_photo')) {
-            $receiptPath = $request->file('receipt_photo')
-                ->store("wage_payments/{$claim->id}", 'public');
+            // v1.40: upload via StorageService → R2 (resolve disk via env).
+            $storage = app(\App\Services\StorageService::class);
+            $file = $request->file('receipt_photo');
+            $receiptPath = $storage->putPhoto(
+                $file,
+                "wage_payments/{$claim->id}/" . uniqid('receipt_') . '.' . $file->extension()
+            );
         }
 
         $payment = ServiceWagePayment::create([

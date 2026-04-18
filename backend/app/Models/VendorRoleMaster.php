@@ -17,6 +17,8 @@ class VendorRoleMaster extends Model
         'app_role', 'is_default_in_package', 'max_per_order',
         'requires_attendance', 'requires_bukti_foto',
         'icon', 'sort_order', 'is_active',
+        // v1.40
+        'is_paid_by_sm',
     ];
 
     protected $casts = [
@@ -24,6 +26,7 @@ class VendorRoleMaster extends Model
         'requires_attendance' => 'boolean',
         'requires_bukti_foto' => 'boolean',
         'is_active' => 'boolean',
+        'is_paid_by_sm' => 'boolean',
     ];
 
     public function assignments(): HasMany

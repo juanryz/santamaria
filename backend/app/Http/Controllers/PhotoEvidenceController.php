@@ -26,7 +26,9 @@ class PhotoEvidenceController extends Controller
         ]);
 
         $file = $request->file('photo');
-        $path = $file->store('photo_evidences/' . ($request->order_id ?? 'general'), 's3');
+        // v1.40: upload via StorageService → R2 (fallback public di dev).
+        $storage = app(\App\Services\StorageService::class);
+        $path = $storage->uploadPhotoEvidence($file, $request->context, $request->order_id);
 
         $evidence = PhotoEvidence::create([
             'context' => $request->context,

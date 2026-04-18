@@ -166,8 +166,11 @@ class ObituaryController extends Controller
             'photo' => 'required|image|max:5120', // max 5MB
         ]);
 
-        $path = $request->file('photo')
-            ->store("obituaries/{$obituary->id}/photo", 's3');
+        // v1.40: upload via StorageService → R2 (resolve disk via env).
+        $path = $this->storage->putPhoto(
+            $request->file('photo'),
+            "obituaries/{$obituary->id}/photo/" . uniqid('photo_') . '.' . $request->file('photo')->extension()
+        );
 
         if ($obituary->deceased_photo_path) {
             $this->storage->delete($obituary->deceased_photo_path);

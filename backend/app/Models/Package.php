@@ -19,6 +19,14 @@ class Package extends Model
         'base_price',
         'religion_specific',
         'is_active',
+        // v1.40
+        'service_duration_days',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'service_duration_days' => 'integer',
+        'base_price' => 'decimal:2',
     ];
 
     protected static function boot()

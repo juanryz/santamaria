@@ -60,6 +60,32 @@ return [
             'report' => false,
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Cloudflare R2 (v1.40)
+        |----------------------------------------------------------------------
+        |
+        | S3-compatible. Keunggulan vs AWS S3: bandwidth/egress GRATIS.
+        | Dipakai sebagai storage utama foto bukti, selfie presensi, akta, dll.
+        | Lihat LAPORAN-INFRASTRUKTUR-PENYIMPANAN.pdf untuk rasional.
+        |
+        | Env yang dibutuhkan (lihat DEPLOYMENT-v1.40.md step 3):
+        |   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET,
+        |   R2_ENDPOINT, R2_PUBLIC_URL
+        */
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => env('R2_REGION', 'auto'),
+            'bucket' => env('R2_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'url' => env('R2_PUBLIC_URL'),
+            'use_path_style_endpoint' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

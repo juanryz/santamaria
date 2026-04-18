@@ -9,6 +9,7 @@ import '../../auth/screens/unified_login_screen.dart';
 import 'finance_report_screen.dart';
 import 'finance_transaction_screen.dart';
 import 'finance_receivables_screen.dart';
+import 'payment_reminder_screen.dart';
 import '../../purchasing/screens/purchasing_wage_approval_screen.dart';
 import '../../purchasing/screens/purchasing_supplier_detail_screen.dart';
 
@@ -1018,6 +1019,31 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        // v1.40: Reminder pembayaran H+4..H+10
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PaymentReminderScreen()),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppColors.statusWarning.withValues(alpha: 0.5)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: const Icon(Icons.schedule_outlined, size: 18, color: AppColors.statusWarning),
+            label: const Text(
+              'Reminder Pembayaran',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: AppColors.statusWarning,
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         SizedBox(
