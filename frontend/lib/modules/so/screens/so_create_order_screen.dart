@@ -35,6 +35,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
   final _picNameController = TextEditingController();
   final _picPhoneController = TextEditingController();
   final _picAddressController = TextEditingController();
+  final _kkNumberController = TextEditingController(); // v1.40 — nomor KK wajib
   String _picRelation = 'anak';
 
   final _deceasedNameController = TextEditingController();
@@ -101,6 +102,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
     _membershipDebounce?.cancel();
     _pageController.dispose();
     _picNameController.dispose();
+    _kkNumberController.dispose();
     _picPhoneController.dispose();
     _picAddressController.dispose();
     _deceasedNameController.dispose();
@@ -307,6 +309,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
         'pic_phone': _picPhoneController.text.trim(),
         'pic_relation': _picRelation,
         'pic_address': _picAddressController.text.trim(),
+        'kk_number': _kkNumberController.text.trim(),
         // Almarhum
         'deceased_name': _deceasedNameController.text.trim(),
         'deceased_dob': _deceasedDob != null
@@ -532,6 +535,23 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
               icon: Icons.home_outlined,
               maxLines: 2,
               validator: (v) => v!.trim().isEmpty ? 'Wajib diisi' : null,
+            ),
+            const SizedBox(height: 12),
+            // v1.40 — nomor KK wajib untuk cek tagihan belum lunas di keluarga
+            _formField(
+              controller: _kkNumberController,
+              label: 'Nomor Kartu Keluarga (16 digit) *',
+              icon: Icons.family_restroom_rounded,
+              keyboardType: TextInputType.number,
+              validator: (v) {
+                final text = v?.trim() ?? '';
+                if (text.isEmpty) return 'Nomor KK wajib diisi';
+                if (!RegExp(r'^[0-9]{16}$').hasMatch(text)) {
+                  return 'Nomor KK harus 16 digit angka';
+                }
+                return null;
+              },
+              hint: 'Lihat di foto KK yang diupload',
             ),
 
             const SizedBox(height: 24),
@@ -1026,6 +1046,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
     int maxLines = 1,
     String? Function(String?)? validator,
     ValueChanged<String>? onChanged,
+    String? hint,
   }) =>
       TextFormField(
         controller: controller,
@@ -1034,6 +1055,7 @@ class _SOCreateOrderScreenState extends State<SOCreateOrderScreen> {
         style: const TextStyle(color: AppColors.textPrimary),
         decoration: InputDecoration(
           labelText: label,
+          hintText: hint,
           prefixIcon: Icon(icon, color: AppColors.textHint, size: 20),
         ),
         validator: validator,

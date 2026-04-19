@@ -8,6 +8,8 @@ import '../../auth/screens/unified_login_screen.dart';
 import 'super_admin_user_list_screen.dart';
 import 'super_admin_master_data_screen.dart';
 import 'super_admin_role_management_screen.dart';
+import 'super_admin_freelance_worker_screen.dart';
+import '../../admin/screens/admin_documentation_screen.dart';
 import '../../../shared/widgets/change_password_dialog.dart';
 
 class SuperAdminDashboardScreen extends StatelessWidget {
@@ -160,6 +162,39 @@ class SuperAdminDashboardScreen extends StatelessWidget {
                       MaterialPageRoute(
                           builder: (_) => SuperAdminRoleManagementScreen(
                               apiClient: ApiClient())),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // v1.40 memory — Super Admin handle photo documentation
+                  // (tukang foto kasih flashdisk, Super Admin upload manual ke email folder)
+                  _buildMenuCard(
+                    context,
+                    icon: Icons.photo_library_rounded,
+                    title: 'Dokumentasi Foto',
+                    subtitle:
+                        'Upload foto & link galeri dari flashdisk tukang foto',
+                    color: _roleColor,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AdminDocumentationScreen()),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // v1.40 memory — Super Admin handle freelance workers
+                  // (tukang jaga, tukang angkat peti, musisi)
+                  _buildMenuCard(
+                    context,
+                    icon: Icons.groups_rounded,
+                    title: 'Pekerja Lepas',
+                    subtitle:
+                        'Kelola tukang jaga, tukang angkat peti, dan musisi',
+                    color: _roleColor,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              const SuperAdminFreelanceWorkerScreen()),
                     ),
                   ),
                   const SizedBox(height: 32),

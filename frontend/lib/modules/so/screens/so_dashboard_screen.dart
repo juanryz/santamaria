@@ -44,15 +44,20 @@ class _SODashboardScreenState extends State<SODashboardScreen> {
     setState(() => _isLoading = true);
     try {
       final res = await _repo.getOrders();
-      if (res.data['success'] == true) {
-        _orders = res.data['data'] as List;
+      if (res.data is Map && res.data['success'] == true) {
+        final d = res.data['data'];
+        if (d is List) {
+          _orders = List<dynamic>.from(d);
+        } else if (d is Map && d['data'] is List) {
+          _orders = List<dynamic>.from(d['data']);
+        }
       }
       _notifWatcher.check(
         newCount: _pendingCount,
         severity: NotificationSeverity.high,
       );
-    } catch (_) {
-      // silent error — handled in UI
+    } catch (e) {
+      debugPrint('SO dashboard load error: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

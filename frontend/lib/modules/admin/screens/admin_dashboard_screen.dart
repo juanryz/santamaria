@@ -46,10 +46,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     setState(() => _isLoading = true);
     try {
       final res = await _repo.getDashboard();
-      if (res.data['success'] == true) {
-        _stats = Map<String, dynamic>.from(res.data['data'] ?? {});
-        _pendingOrders = (_stats['pending_orders'] as int?) ?? 0;
-        _activeOrders = (_stats['active_orders'] as int?) ?? 0;
+      if (res.data is Map && res.data['success'] == true) {
+        final d = res.data['data'];
+        if (d is Map) {
+          _stats = Map<String, dynamic>.from(d);
+          _pendingOrders = _asInt(_stats['pending_orders']) ?? 0;
+          _activeOrders = _asInt(_stats['active_orders']) ?? 0;
+        }
       }
       _notifWatcher.check(
         newCount: _pendingOrders,
@@ -260,5 +263,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleAdmin))),
       ),
     ];
+  }
+
+  static int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
   }
 }

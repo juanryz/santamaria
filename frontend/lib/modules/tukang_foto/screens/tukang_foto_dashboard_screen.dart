@@ -9,7 +9,7 @@ import '../../../providers/auth_provider.dart';
 import '../../auth/screens/unified_login_screen.dart';
 import '../../vendor/screens/vendor_attendance_screen.dart';
 import '../../kpi/screens/kpi_dashboard_screen.dart';
-import 'gallery_link_screen.dart';
+// import 'gallery_link_screen.dart'; // v1.40 — removed, Super Admin handle photo upload
 import 'photographer_daily_wages_screen.dart';
 import '../../wage/screens/my_wage_claims_screen.dart';
 import '../../../shared/screens/my_leaves_screen.dart';
@@ -228,17 +228,10 @@ class _TukangFotoDashboardScreenState extends State<TukangFotoDashboardScreen> {
                       label: const Text('Presensi'),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => GalleryLinkScreen(orderId: order['id'] ?? '', canAdd: true),
-                      )),
-                      icon: const Icon(Icons.add_to_drive, size: 16),
-                      label: const Text('Galeri'),
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.roleTukangFoto),
-                    ),
-                  ),
+                  // v1.40 memory — simplified photo delivery:
+                  // Tukang foto kasih flashdisk fisik ke SM, Super Admin upload ke email folder,
+                  // link dishare ke consumer. Tukang foto TIDAK upload link dari app ini.
+                  // Button "Galeri" dihilangkan untuk menghindari kebingungan.
                 ],
               ),
             ],

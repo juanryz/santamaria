@@ -128,7 +128,29 @@ class OrderController extends Controller
             // v1.39 — service tier
             'service_type'             => 'nullable|in:anggota,non_anggota',
             'consumer_membership_id'   => 'nullable|uuid|exists:consumer_memberships,id',
+            // v1.40 memory — nomor KK wajib untuk blokir order baru kalau KK sama punya tagihan
+            'kk_number'                => 'required|string|regex:/^[0-9]{16}$/',
         ]);
+
+        // v1.40 memory — KK-based payment block:
+        // Blokir order baru kalau ada tagihan belum lunas di KK yang sama.
+        $unpaidSameKk = Order::where('kk_number', $request->kk_number)
+            ->whereIn('payment_status', ['unpaid', 'proof_uploaded', 'proof_rejected'])
+            ->whereNotIn('status', ['cancelled'])
+            ->first();
+        if ($unpaidSameKk) {
+            return response()->json([
+                'success'    => false,
+                'error_code' => 'KK_HAS_UNPAID_ORDER',
+                'message'    => "Ada tagihan belum lunas di nomor KK ini. Order {$unpaidSameKk->order_number} atas nama {$unpaidSameKk->deceased_name} harus dibayar dulu sebelum order baru.",
+                'unpaid_order' => [
+                    'order_number'   => $unpaidSameKk->order_number,
+                    'deceased_name'  => $unpaidSameKk->deceased_name,
+                    'payment_status' => $unpaidSameKk->payment_status,
+                    'created_at'     => $unpaidSameKk->created_at,
+                ],
+            ], 422);
+        }
 
         return DB::transaction(function () use ($request) {
             // 1. Cari atau buat user konsumen
