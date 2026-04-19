@@ -30,13 +30,13 @@ class FuneralHomeController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'    => 'required|string|max:255',
-            'city'    => 'required|string|max:100',
-            'address' => 'nullable|string|max:500',
-            'phone'   => 'nullable|string|max:30',
-            'latitude'  => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'notes'   => 'nullable|string|max:1000',
+            'name'          => 'required|string|max:255',
+            'city'          => 'required|string|max:100',
+            'address'       => 'nullable|string|max:500',
+            'contact_phone' => 'nullable|string|max:30',
+            'lat'           => 'nullable|numeric',
+            'lng'           => 'nullable|numeric',
+            'notes'         => 'nullable|string|max:1000',
         ]);
 
         $funeralHome = FuneralHome::create($validated);
@@ -56,14 +56,14 @@ class FuneralHomeController extends Controller
         $funeralHome = FuneralHome::findOrFail($id);
 
         $validated = $request->validate([
-            'name'    => 'sometimes|required|string|max:255',
-            'city'    => 'sometimes|required|string|max:100',
-            'address' => 'nullable|string|max:500',
-            'phone'   => 'nullable|string|max:30',
-            'latitude'  => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'notes'   => 'nullable|string|max:1000',
-            'is_active' => 'nullable|boolean',
+            'name'          => 'sometimes|required|string|max:255',
+            'city'          => 'sometimes|required|string|max:100',
+            'address'       => 'nullable|string|max:500',
+            'contact_phone' => 'nullable|string|max:30',
+            'lat'           => 'nullable|numeric',
+            'lng'           => 'nullable|numeric',
+            'notes'         => 'nullable|string|max:1000',
+            'is_active'     => 'nullable|boolean',
         ]);
 
         $funeralHome->update($validated);

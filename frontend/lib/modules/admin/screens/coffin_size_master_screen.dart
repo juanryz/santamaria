@@ -125,7 +125,7 @@ class _CoffinSizeMasterScreenState extends State<CoffinSizeMasterScreen> {
                     ? const Center(
                         child: EmptyStateWidget(
                           icon: Icons.inventory_2_outlined,
-                          message: 'Belum ada ukuran peti.',
+                          title: 'Belum ada ukuran peti.',
                         ),
                       )
                     : ListView.builder(

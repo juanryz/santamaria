@@ -40,13 +40,13 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  height: 64, // ↑ 56 (senior-friendly, lebih mudah di-tap)
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: accentColor.withValues(alpha: 0.12),
-                        width: 0.5,
+                        color: accentColor.withValues(alpha: 0.15),
+                        width: 1,
                       ),
                     ),
                   ),
@@ -56,27 +56,29 @@ class GlassAppBar extends StatelessWidget implements PreferredSizeWidget {
                         leading!
                       else if (shouldShowBack)
                         GlassWidget(
-                          borderRadius: 12,
+                          borderRadius: 14,
                           blurSigma: 10,
-                          tint: accentColor.withValues(alpha: 0.08),
-                          borderColor: accentColor.withValues(alpha: 0.20),
-                          padding: const EdgeInsets.all(8),
+                          tint: accentColor.withValues(alpha: 0.12),
+                          borderColor: accentColor.withValues(alpha: 0.28),
+                          padding: const EdgeInsets.all(12), // ↑ tap target 48
                           onTap: () => Navigator.pop(context),
                           child: Icon(
                             Icons.arrow_back_ios_new,
-                            size: 16,
+                            size: 20, // ↑ 16
                             color: accentColor,
                           ),
                         ),
-                      if (shouldShowBack || leading != null) const SizedBox(width: 8),
+                      if (shouldShowBack || leading != null) const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 20, // ↑ 18
+                            fontWeight: FontWeight.w800,
                             color: AppColors.textPrimary,
+                            letterSpacing: -0.3,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (actions != null) ...actions!,
@@ -117,14 +119,14 @@ class GlassIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip ?? '',
       child: GlassWidget(
-        borderRadius: 12,
+        borderRadius: 14,
         blurSigma: 10,
-        tint: color.withValues(alpha: 0.08),
-        borderColor: color.withValues(alpha: 0.15),
-        padding: const EdgeInsets.all(8),
+        tint: color.withValues(alpha: 0.10),
+        borderColor: color.withValues(alpha: 0.20),
+        padding: const EdgeInsets.all(12), // ↑ 8 = tap target 48dp
         margin: const EdgeInsets.only(right: 8),
         onTap: onPressed,
-        child: Icon(icon, size: 20, color: color),
+        child: Icon(icon, size: 22, color: color), // ↑ 20
       ),
     );
   }

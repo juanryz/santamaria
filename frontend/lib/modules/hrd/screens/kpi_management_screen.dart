@@ -129,7 +129,7 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
                     child: ListTile(
                       dense: true,
                       title: Text(m['metric_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      subtitle: Text('Target: ${m['target_value']} ${m['unit']} | Bobot: ${m['weight']}%', style: const TextStyle(fontSize: 11)),
+                      subtitle: Text('Target: ${m['target_value']} ${m['unit']} | Bobot: ${m['weight']}%', style: const TextStyle(fontSize: 13)),
                       trailing: Icon(
                         m['target_direction'] == 'lower_is_better' ? Icons.arrow_downward : Icons.arrow_upward,
                         color: AppColors.roleHrd,
@@ -237,7 +237,7 @@ class _KpiManagementScreenState extends State<KpiManagementScreen> with SingleTi
     return Expanded(
       child: Column(children: [
         Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color ?? AppColors.textPrimary)),
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ]),
     );
   }

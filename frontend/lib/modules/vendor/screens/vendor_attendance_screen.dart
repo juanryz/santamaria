@@ -64,7 +64,22 @@ class _VendorAttendanceScreenState extends State<VendorAttendanceScreen> {
       await _api.dio.post('/vendor/attendances/$id/check-out');
       _loadData();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Check-out berhasil')));
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        String msg = 'Gagal melakukan check-out. Silakan coba lagi.';
+        if (e is DioException) {
+          final statusCode = e.response?.statusCode;
+          if (statusCode == 500) {
+            msg = 'Terjadi gangguan pada server. Silakan coba beberapa saat lagi.';
+          } else if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+            msg = 'Koneksi timeout. Periksa jaringan Anda dan coba lagi.';
+          } else if (e.type == DioExceptionType.connectionError) {
+            msg = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+          }
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Color _statusColor(String status) {

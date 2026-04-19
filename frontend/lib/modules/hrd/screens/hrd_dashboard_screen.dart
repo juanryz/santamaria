@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
-import '../../../core/network/api_client.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../shared/widgets/glass_widget.dart';
-import '../../../shared/widgets/glass_app_bar.dart';
-import '../../../providers/auth_provider.dart';
 import 'package:provider/provider.dart';
-import '../../auth/screens/unified_login_screen.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/services/notification_feedback_service.dart';
+import '../../../core/services/notification_watcher.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../shared/widgets/notification_bell.dart';
+import '../../../shared/widgets/role_dashboard_header.dart';
+import '../../../shared/widgets/senior_menu_grid.dart';
 import 'hrd_violation_list_screen.dart';
 import 'hrd_threshold_screen.dart';
 import 'kpi_management_screen.dart';
 import 'hrd_attendance_dashboard_screen.dart';
 import 'hrd_shift_management_screen.dart';
 import 'hrd_employee_list_screen.dart';
-import '../../../shared/screens/employee_command_screen.dart';
 import 'hrd_payroll_screen.dart';
 import 'hrd_salary_config_screen.dart';
 import 'leaves_approval_screen.dart';
+import '../../../shared/screens/employee_command_screen.dart';
 import '../../../shared/screens/my_leaves_screen.dart';
 
+/// HRD Dashboard — pattern seragam senior-friendly.
 class HrdDashboardScreen extends StatefulWidget {
   const HrdDashboardScreen({super.key});
 
@@ -27,13 +29,14 @@ class HrdDashboardScreen extends StatefulWidget {
 }
 
 class _HrdDashboardScreenState extends State<HrdDashboardScreen> {
-  final ApiClient _api = ApiClient();
-  bool _isLoading = true;
-  static const _roleColor = AppColors.roleHrd;
-
-  int _totalViolations = 0;
+  final _api = ApiClient();
+  final _notifWatcher = NotificationWatcher();
   int _pendingViolations = 0;
-  int _criticalViolations = 0;
+  int _pendingLeaves = 0;
+  int _totalEmployees = 0;
+  bool _isLoading = true;
+
+  static const _roleColor = AppColors.roleHrd;
 
   @override
   void initState() {
@@ -44,120 +47,281 @@ class _HrdDashboardScreenState extends State<HrdDashboardScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final res = await _api.dio.get('/hrd/violations');
-      if (res.data['success'] == true) {
-        final list = List<dynamic>.from(res.data['data'] ?? []);
-        _totalViolations = list.length;
-        _pendingViolations = list.where((v) => v['status'] == 'pending').length;
-        _criticalViolations = list.where((v) => v['severity'] == 'critical').length;
+      final violations = await _api.dio.get('/hrd/violations?status=pending')
+          .catchError((_) => null as dynamic);
+      final leaves = await _api.dio.get('/hrd/leaves?status=requested')
+          .catchError((_) => null as dynamic);
+      final employees = await _api.dio.get('/hrd/employees')
+          .catchError((_) => null as dynamic);
+
+      if (violations != null && violations.data is Map && violations.data['success'] == true) {
+        _pendingViolations = (violations.data['data'] as List?)?.length ?? 0;
       }
-    } catch (_) {}
-    if (mounted) setState(() => _isLoading = false);
+      if (leaves != null && leaves.data is Map && leaves.data['success'] == true) {
+        _pendingLeaves = (leaves.data['data'] as List?)?.length ?? 0;
+      }
+      if (employees != null && employees.data is Map && employees.data['success'] == true) {
+        _totalEmployees = (employees.data['data'] as List?)?.length ?? 0;
+      }
+      _notifWatcher.check(
+        newCount: _pendingViolations + _pendingLeaves,
+        severity: _pendingViolations > 0
+            ? NotificationSeverity.alarm
+            : NotificationSeverity.high,
+      );
+    } catch (_) {
+      // silent
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  List<DashboardNotification> _buildNotifications() {
+    final list = <DashboardNotification>[];
+    if (_pendingViolations > 0) {
+      list.add(DashboardNotification(
+        icon: Icons.gavel_rounded,
+        title: 'Pelanggaran Baru',
+        message: '$_pendingViolations pelanggaran perlu ditindaklanjuti',
+        color: AppColors.statusDanger,
+      ));
+    }
+    if (_pendingLeaves > 0) {
+      list.add(DashboardNotification(
+        icon: Icons.beach_access_rounded,
+        title: 'Pengajuan Cuti',
+        message: '$_pendingLeaves cuti menunggu approval',
+        color: AppColors.statusWarning,
+      ));
+    }
+    return list;
+  }
+
+  String _getGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 11) return 'Selamat pagi';
+    if (h < 15) return 'Selamat siang';
+    if (h < 19) return 'Selamat sore';
+    return 'Selamat malam';
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final userName = (user?['name'] as String?) ?? 'HRD';
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: GlassAppBar(
-        title: 'HRD',
-        accentColor: _roleColor,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: AppColors.brandPrimary),
-            onPressed: () async {
-              await context.read<AuthProvider>().logout();
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
-                  (_) => false,
-                );
-              }
-            },
+      body: Stack(
+        children: [
+          Positioned(
+            top: -60, right: -60,
+            child: Container(
+              width: 220, height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _roleColor.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RoleDashboardHeader(
+                            roleLabel: 'HRD',
+                            roleColor: _roleColor,
+                            greeting: _getGreeting(),
+                            userName: userName,
+                            notifications: _buildNotifications(),
+                            badges: [
+                              if (_pendingViolations > 0)
+                                HeaderBadge(
+                                  label: '$_pendingViolations Pelanggaran',
+                                  color: AppColors.statusDanger,
+                                  icon: Icons.gavel_rounded,
+                                ),
+                              if (_pendingLeaves > 0)
+                                HeaderBadge(
+                                  label: '$_pendingLeaves Cuti',
+                                  color: AppColors.statusWarning,
+                                  icon: Icons.beach_access_rounded,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Karyawan',
+                                    value: _totalEmployees.toString(),
+                                    icon: Icons.people_rounded,
+                                    color: _roleColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Pelanggaran',
+                                    value: _pendingViolations.toString(),
+                                    icon: Icons.gavel_rounded,
+                                    color: AppColors.statusDanger,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Cuti Pending',
+                                    value: _pendingLeaves.toString(),
+                                    icon: Icons.beach_access_rounded,
+                                    color: AppColors.statusWarning,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildSectionHeader('Menu Utama', Icons.dashboard_rounded),
+                          SeniorMenuGrid(
+                            columns: 3,
+                            items: _buildMenu(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildStatRow(),
-                  const SizedBox(height: 24),
-                  _buildMenuList(),
-                ],
-              ),
-      ),
     );
   }
 
-  Widget _buildStatRow() {
-    return Row(
-      children: [
-        _statCard('Total\nPelanggaran', _totalViolations, Icons.warning_amber, Colors.orange),
-        const SizedBox(width: 12),
-        _statCard('Belum\nDitangani', _pendingViolations, Icons.pending_actions, Colors.red),
-        const SizedBox(width: 12),
-        _statCard('Kritis', _criticalViolations, Icons.error, Colors.red.shade800),
-      ],
-    );
-  }
-
-  Widget _statCard(String label, int count, IconData icon, Color color) {
-    return Expanded(
-      child: GlassWidget(
-        borderRadius: 16,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 8),
-              Text('$count', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-              const SizedBox(height: 4),
-              Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuList() {
-    final menus = [
-      {'icon': Icons.campaign, 'label': 'Perintah dari Owner', 'screen': const EmployeeCommandScreen(roleColor: AppColors.roleHrd)},
-      {'icon': Icons.badge_outlined, 'label': 'Manajemen Karyawan', 'screen': const HrdEmployeeListScreen()},
-      {'icon': Icons.warning_amber, 'label': 'Daftar Pelanggaran', 'screen': const HrdViolationListScreen()},
-      {'icon': Icons.tune, 'label': 'Pengaturan Threshold', 'screen': const HrdThresholdScreen()},
-      {'icon': Icons.people, 'label': 'Presensi Karyawan', 'screen': const HrdAttendanceDashboardScreen()},
-      {'icon': Icons.bar_chart, 'label': 'KPI Karyawan', 'screen': const KpiManagementScreen()},
-      {'icon': Icons.schedule, 'label': 'Shift & Lokasi', 'screen': const HrdShiftManagementScreen()},
-      {'icon': Icons.payments, 'label': 'Payroll', 'screen': const HrdPayrollScreen()},
-      {'icon': Icons.monetization_on, 'label': 'Konfigurasi Gaji', 'screen': const HrdSalaryConfigScreen()},
-      // v1.39 — Cuti & Izin
-      {'icon': Icons.event_busy, 'label': 'Approval Cuti & Izin', 'screen': const LeavesApprovalScreen()},
-      {'icon': Icons.event_available, 'label': 'Cuti Saya', 'screen': const MyLeavesScreen()},
-    ];
-
-    return Column(
-      children: menus.map((m) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: GlassWidget(
-            borderRadius: 14,
-            child: ListTile(
-              leading: Icon(m['icon'] as IconData, color: _roleColor),
-              title: Text(m['label'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: m['screen'] != null
-                  ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => m['screen'] as Widget))
-                  : null,
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          Icon(icon, color: _roleColor, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
           ),
-        );
-      }).toList(),
+        ],
+      ),
     );
+  }
+
+  List<SeniorMenuItem> _buildMenu() {
+    return [
+      SeniorMenuItem(
+        icon: Icons.people_rounded,
+        label: 'Karyawan',
+        subtitle: '$_totalEmployees orang',
+        color: _roleColor,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdEmployeeListScreen()))
+            .then((_) => _loadData()),
+      ),
+      SeniorMenuItem(
+        icon: Icons.gavel_rounded,
+        label: 'Pelanggaran',
+        subtitle: 'Daftar pelanggaran',
+        color: AppColors.statusDanger,
+        badge: _pendingViolations > 0 ? _pendingViolations : null,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdViolationListScreen()))
+            .then((_) => _loadData()),
+      ),
+      SeniorMenuItem(
+        icon: Icons.beach_access_rounded,
+        label: 'Cuti Masuk',
+        subtitle: 'Approval cuti',
+        color: AppColors.statusWarning,
+        badge: _pendingLeaves > 0 ? _pendingLeaves : null,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const LeavesApprovalScreen()))
+            .then((_) => _loadData()),
+      ),
+      SeniorMenuItem(
+        icon: Icons.fingerprint_rounded,
+        label: 'Presensi',
+        subtitle: 'Attendance',
+        color: AppColors.brandPrimary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdAttendanceDashboardScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.schedule_rounded,
+        label: 'Shift',
+        subtitle: 'Kelola shift',
+        color: AppColors.statusInfo,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdShiftManagementScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.leaderboard_rounded,
+        label: 'KPI',
+        subtitle: 'Kinerja tim',
+        color: AppColors.brandAccent,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const KpiManagementScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.payments_rounded,
+        label: 'Payroll',
+        subtitle: 'Gaji bulanan',
+        color: AppColors.statusSuccess,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdPayrollScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.account_balance_wallet_rounded,
+        label: 'Gaji Pokok',
+        subtitle: 'Konfigurasi',
+        color: AppColors.brandSecondary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdSalaryConfigScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.tune_rounded,
+        label: 'Threshold',
+        subtitle: 'Batas sistem',
+        color: AppColors.textSecondary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const HrdThresholdScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.campaign_rounded,
+        label: 'Perintah',
+        subtitle: 'Dari Owner',
+        color: AppColors.roleOwner,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleHrd))),
+      ),
+      SeniorMenuItem(
+        icon: Icons.event_note_rounded,
+        label: 'Cuti Saya',
+        subtitle: 'Ajukan cuti',
+        color: AppColors.rolePemukaAgama,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
+      ),
+    ];
   }
 }

@@ -220,10 +220,24 @@ Route::prefix('v1')->middleware('throttle:api')->group(function () {
                 Route::post('/orders/{orderId}/shifts/generate',   [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'generateShifts']);
                 Route::put('/shifts/{id}/assign',                  [\App\Http\Controllers\Admin\TukangJagaManagementController::class, 'assignShift']);
 
-                // v1.31 — Funeral Homes & Cemeteries (admin CRUD, index/show are public within auth)
-                Route::apiResource('funeral-homes', \App\Http\Controllers\Admin\FuneralHomeController::class)->except(['index', 'show']);
-                Route::apiResource('cemeteries', \App\Http\Controllers\Admin\CemeteryController::class)->except(['index', 'show']);
+                // v1.31 — Funeral Homes & Cemeteries: destroy tetap admin/owner only.
+                // Create/update dipindah ke group bawah agar SO juga bisa tambah saat input order.
+                Route::delete('/funeral-homes/{id}', [\App\Http\Controllers\Admin\FuneralHomeController::class, 'destroy']);
+                Route::delete('/cemeteries/{id}',    [\App\Http\Controllers\Admin\CemeteryController::class,    'destroy']);
             });
+
+        // v1.31 / v1.40 — SO wajib bisa menambah Rumah Duka & TPU saat input order di lapangan.
+        Route::middleware('role:' . implode(',', [
+            UserRole::SERVICE_OFFICER->value,
+            UserRole::ADMIN->value,
+            UserRole::OWNER->value,
+            UserRole::SUPER_ADMIN->value,
+        ]))->prefix('admin')->group(function () {
+            Route::post('/funeral-homes',       [\App\Http\Controllers\Admin\FuneralHomeController::class, 'store']);
+            Route::put('/funeral-homes/{id}',   [\App\Http\Controllers\Admin\FuneralHomeController::class, 'update']);
+            Route::post('/cemeteries',          [\App\Http\Controllers\Admin\CemeteryController::class,    'store']);
+            Route::put('/cemeteries/{id}',      [\App\Http\Controllers\Admin\CemeteryController::class,    'update']);
+        });
 
         // ── Package write routes — admin only (owner excluded) ────────────────
         Route::middleware(['auth:sanctum', 'role:' . UserRole::ADMIN->value])

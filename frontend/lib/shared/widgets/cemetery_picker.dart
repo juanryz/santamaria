@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_client.dart';
@@ -274,7 +275,7 @@ class _CemeteryPickerState extends State<CemeteryPicker> {
                   'name': nameCtrl.text.trim(),
                   'city': cityCtrl.text.trim(),
                   'address': addressCtrl.text.trim(),
-                  'type': selectedType,
+                  'cemetery_type': selectedType,
                 });
               },
               child: const Text('Simpan'),
@@ -293,6 +294,18 @@ class _CemeteryPickerState extends State<CemeteryPicker> {
         _controller.text = created['name'] ?? result['name']!;
         widget.onSelected(created['id'].toString(), created['name'] ?? result['name']!);
       }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final body = e.response?.data;
+      String msg = 'Gagal menambahkan pemakaman';
+      if (body is Map) {
+        if (body['message'] is String) msg = body['message'];
+        if (body['errors'] is Map && (body['errors'] as Map).isNotEmpty) {
+          final first = (body['errors'] as Map).values.first;
+          if (first is List && first.isNotEmpty) msg = first.first.toString();
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

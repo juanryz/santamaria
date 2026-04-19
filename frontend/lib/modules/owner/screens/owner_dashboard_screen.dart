@@ -1,21 +1,31 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/notification_feedback_service.dart';
+import '../../../core/services/notification_watcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/repositories/owner_repository.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../shared/widgets/glass_widget.dart';
-import '../../auth/screens/unified_login_screen.dart';
+import '../../../shared/widgets/notification_bell.dart';
+import '../../../shared/widgets/role_dashboard_header.dart';
+import '../../../shared/widgets/senior_menu_grid.dart';
 import '../../hrd/screens/kpi_management_screen.dart';
 import 'owner_fleet_map_screen.dart';
 import 'owner_command_screen.dart';
 import 'death_cert_overview_screen.dart';
 import 'cctv_monitoring_screen.dart';
+import 'owner_order_list_screen.dart';
+import 'owner_anomaly_list_screen.dart';
+import 'owner_reports_screen.dart';
 
+/// Owner Dashboard — simplified senior-friendly.
+///
+/// Pattern seragam untuk semua role:
+/// - Header (RoleDashboardHeader)
+/// - Stats cards (DashboardStatCard)
+/// - Menu grid (SeniorMenuGrid) — fokus utama
+/// - Detail sections (list pendek)
 class OwnerDashboardScreen extends StatefulWidget {
   const OwnerDashboardScreen({super.key});
 
@@ -26,17 +36,13 @@ class OwnerDashboardScreen extends StatefulWidget {
 class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
   late final OwnerRepository _repo;
   final _api = ApiClient();
+  final _currency = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  final _notifWatcher = NotificationWatcher();
 
   Map<String, dynamic> _stats = {};
   List<dynamic> _orders = [];
-  List<dynamic> _reports = [];
   List<dynamic> _anomalies = [];
   bool _isLoading = true;
-  int _tab = 0; // 0=Dashboard, 1=Orders, 2=Anomali, 3=Laporan, 4=KPI, 5=Armada, 6=Perintah
-
-  // Map
-  final MapController _mapCtrl = MapController();
-  List<Marker> _driverMarkers = [];
 
   static const _roleColor = AppColors.roleOwner;
 
@@ -47,81 +53,174 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     _loadData();
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final results = await Future.wait([
-        _repo.getDashboard(),
-        _api.dio.get('/owner/orders'),
-        _api.dio.get('/owner/reports/daily'),
-        _api.dio.get('/owner/purchase-orders/anomalies'),
-      ]);
-
-      if (results[0].data['success'] == true) {
-        setState(() => _stats = results[0].data['data']);
-      }
-      if (results[1].data['success'] == true) {
-        // Handle both direct list and paginated response
-        final data = results[1].data['data'];
-        if (data is Map && data['data'] != null) {
-          setState(() => _orders = List<dynamic>.from(data['data']));
-        } else {
-          setState(() => _orders = List<dynamic>.from(data ?? []));
+      // Fetch satu per satu dengan try/catch terpisah — 1 endpoint gagal
+      // tidak boleh bikin seluruh dashboard blank.
+      try {
+        final res = await _repo.getDashboard();
+        if (res.data is Map && res.data['success'] == true) {
+          final d = res.data['data'];
+          if (d is Map) _stats = Map<String, dynamic>.from(d);
         }
+      } catch (e) {
+        debugPrint('Owner /dashboard error: $e');
       }
-      if (results[2].data['success'] == true) {
-        setState(() => _reports = List<dynamic>.from(results[2].data['data'] ?? []));
+
+      try {
+        final res = await _api.dio.get('/owner/orders');
+        if (res.data is Map && res.data['success'] == true) {
+          final d = res.data['data'];
+          if (d is List) {
+            _orders = List<dynamic>.from(d);
+          } else if (d is Map && d['data'] is List) {
+            _orders = List<dynamic>.from(d['data']);
+          }
+        }
+      } catch (e) {
+        debugPrint('Owner /orders error: $e');
       }
-      if (results[3].data['success'] == true) {
-        setState(() => _anomalies = List<dynamic>.from(results[3].data['data'] ?? []));
+
+      try {
+        final res = await _api.dio.get('/owner/purchase-orders/anomalies');
+        if (res.data is Map && res.data['success'] == true) {
+          final d = res.data['data'];
+          if (d is List) _anomalies = List<dynamic>.from(d);
+        }
+      } catch (e) {
+        debugPrint('Owner /anomalies error: $e');
       }
-      _buildDriverMarkers();
-    } catch (e) {
-      debugPrint('Owner dashboard error: $e');
+
+      // Feedback audio + haptic kalau jumlah notif bertambah sejak refresh terakhir
+      _notifWatcher.check(
+        newCount: _anomalies.length + _orders.length,
+        severity: _anomalies.isNotEmpty
+            ? NotificationSeverity.alarm
+            : NotificationSeverity.normal,
+      );
+    } catch (e, st) {
+      debugPrint('Owner dashboard fatal error: $e\n$st');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _buildDriverMarkers() {
-    final drivers = (_stats['active_drivers'] as List?) ?? [];
-    final markers = <Marker>[];
-    for (final d in drivers) {
-      if (d is! Map) continue;
-      final lat = double.tryParse(d['location_lat']?.toString() ?? '');
-      final lng = double.tryParse(d['location_lng']?.toString() ?? '');
-      if (lat != null && lng != null) {
-        markers.add(
-          Marker(
-            point: LatLng(lat, lng),
-            width: 30,
-            height: 30,
-            child: const Icon(
-              Icons.location_on,
-              color: AppColors.roleDriver,
-              size: 30,
-            ),
-          ),
-        );
-      }
+  List<DashboardNotification> _buildNotifications() {
+    final list = <DashboardNotification>[];
+    // Anomali dulu (paling urgent)
+    for (final a in _anomalies.take(10)) {
+      list.add(DashboardNotification(
+        icon: Icons.warning_amber_rounded,
+        title: (a['title'] as String?) ?? 'Anomali Terdeteksi',
+        message: (a['description'] as String?) ?? 'Perlu perhatian',
+        color: AppColors.statusDanger,
+      ));
     }
-    setState(() => _driverMarkers = markers);
+    // Order terbaru
+    for (final o in _orders.take(5)) {
+      final deceased = o['deceased_name'] as String? ?? '-';
+      list.add(DashboardNotification(
+        icon: Icons.receipt_long_rounded,
+        title: 'Order ${o['order_number'] ?? ''}',
+        message: deceased,
+        color: _roleColor,
+      ));
+    }
+    return list;
+  }
+
+  String _getGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 11) return 'Selamat pagi';
+    if (h < 15) return 'Selamat siang';
+    if (h < 19) return 'Selamat sore';
+    return 'Selamat malam';
   }
 
   @override
   Widget build(BuildContext context) {
+    // Wrap seluruh build di try/catch manual via Builder,
+    // supaya error apapun di widget nested tidak bikin layar blank.
+    try {
+      return _safeBuild(context);
+    } catch (e, st) {
+      debugPrint('Owner build error: $e\n$st');
+      return _buildErrorFallback(e);
+    }
+  }
+
+  Widget _buildErrorFallback(Object e) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 64, color: AppColors.statusDanger),
+              const SizedBox(height: 16),
+              const Text(
+                'Gagal memuat dashboard',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                e.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _loadData,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Coba Lagi'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _roleColor,
+                  minimumSize: const Size(160, 52),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _safeBuild(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
+    final userName = _asString(user?['name']) ?? 'Owner';
+
+    // Stats dari data — defensive parsing (jangan pakai `as int?`, bisa crash
+    // kalau value datang sebagai String atau double dari backend).
+    final ordersToday = _asInt(_stats['orders_today']) ??
+        _asInt(_stats['today_order_count']) ??
+        _orders.length;
+    final revenueToday = _asDouble(_stats['revenue_today']) ??
+        _asDouble(_stats['today_revenue']) ??
+        _asDouble(_stats['total_revenue']) ??
+        0;
+    final activeDriversRaw = _stats['active_drivers'];
+    final activeDrivers = activeDriversRaw is List
+        ? activeDriversRaw.length
+        : (_asInt(_stats['active_driver_count']) ??
+            _asInt(_stats['drivers_on_duty']) ??
+            0);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Blob decorations
+          // Decorative blobs
           Positioned(
             top: -60, right: -60,
             child: Container(
@@ -144,22 +243,104 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
           ),
 
           SafeArea(
-            child: Column(
-              children: [
-                _buildHeader(user),
-                _buildTabBar(),
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : RefreshIndicator(
-                          onRefresh: _loadData,
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 250),
-                            child: _buildTabContent(),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1. HEADER (dengan bell notification)
+                          RoleDashboardHeader(
+                            roleLabel: 'Owner Portal',
+                            roleColor: _roleColor,
+                            greeting: _getGreeting(),
+                            userName: userName,
+                            notifications: _buildNotifications(),
+                            badges: [
+                              if (_anomalies.isNotEmpty)
+                                HeaderBadge(
+                                  label: '${_anomalies.length} Anomali',
+                                  color: AppColors.statusDanger,
+                                  icon: Icons.warning_amber_rounded,
+                                ),
+                            ],
                           ),
-                        ),
-                ),
-              ],
+
+                          const SizedBox(height: 8),
+
+                          // 2. STATS
+                          _buildStatsRow(
+                            ordersToday: ordersToday,
+                            revenueToday: revenueToday,
+                            activeDrivers: activeDrivers,
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // 3. MENU GRID (fokus utama)
+                          _buildMainMenuHeader(),
+                          SeniorMenuGrid(
+                            columns: 3,
+                            items: _buildMenuItems(),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // 4. DETAIL SECTIONS
+                          if (_anomalies.isNotEmpty) ...[
+                            _buildSectionHeader('Anomali', Icons.warning_amber_rounded, AppColors.statusDanger),
+                            _buildAnomaliesPreview(),
+                            const SizedBox(height: 20),
+                          ],
+                          _buildSectionHeader('Order Terbaru', Icons.receipt_long_rounded, _roleColor),
+                          _buildOrdersPreview(),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsRow({
+    required int ordersToday,
+    required double revenueToday,
+    required int activeDrivers,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: DashboardStatCard(
+              label: 'Order Hari Ini',
+              value: ordersToday.toString(),
+              icon: Icons.receipt_long_rounded,
+              color: _roleColor,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DashboardStatCard(
+              label: 'Pendapatan',
+              value: _compactCurrency(revenueToday),
+              icon: Icons.account_balance_wallet_rounded,
+              color: AppColors.statusSuccess,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DashboardStatCard(
+              label: 'Driver Aktif',
+              value: activeDrivers.toString(),
+              icon: Icons.local_shipping_rounded,
+              color: AppColors.brandSecondary,
             ),
           ),
         ],
@@ -167,119 +348,192 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     );
   }
 
-  Widget _buildHeader(Map<String, dynamic>? user) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Owner Portal',
-                    style: TextStyle(
-                        color: _roleColor,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                        fontSize: 11)),
-                const SizedBox(height: 2),
-                Text(user?['name'] ?? 'Owner',
-                    style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900)),
-              ],
-            ),
-            const Spacer(),
-            if (_anomalies.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.statusDanger.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: AppColors.statusDanger.withValues(alpha: 0.35)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded,
-                        color: AppColors.statusDanger, size: 14),
-                    const SizedBox(width: 4),
-                    Text('${_anomalies.length} Anomali',
-                        style: const TextStyle(
-                            color: AppColors.statusDanger,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            GlassWidget(
-              borderRadius: 12,
-              blurSigma: 10,
-              tint: AppColors.glassWhite,
-              borderColor: AppColors.glassBorder,
-              padding: const EdgeInsets.all(8),
-              onTap: () async {
-                final nav = Navigator.of(context);
-                await context.read<AuthProvider>().logout();
-                if (!mounted) return;
-                nav.pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
-                  (_) => false,
-                );
-              },
-              child: const Icon(Icons.logout,
-                  color: AppColors.textSecondary, size: 20),
-            ),
-          ],
-        ),
-      );
+  // Defensive parsing helpers — hindari `as int` crash kalau backend
+  // kirim String/double/null.
+  static int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
 
-  Widget _buildTabBar() {
-    final tabs = [
-      (Icons.dashboard_outlined, 'Dashboard'),
-      (Icons.receipt_long_outlined, 'Order'),
-      (Icons.warning_amber_outlined, 'Anomali'),
-      (Icons.analytics_outlined, 'Laporan'),
-      (Icons.leaderboard_outlined, 'KPI'),
-      (Icons.map_outlined, 'Armada'),
-      (Icons.campaign_outlined, 'Perintah'),
-    ];
-    return Container(
-      color: AppColors.background,
+  static double? _asDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  static String? _asString(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    return v.toString();
+  }
+
+  String _compactCurrency(double v) {
+    if (v >= 1000000000) return 'Rp ${(v / 1000000000).toStringAsFixed(1)}M';
+    if (v >= 1000000) return 'Rp ${(v / 1000000).toStringAsFixed(1)}jt';
+    if (v >= 1000) return 'Rp ${(v / 1000).toStringAsFixed(0)}rb';
+    return _currency.format(v);
+  }
+
+  Widget _buildMainMenuHeader() {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
-        children: tabs.asMap().entries.map((e) {
-          final i = e.key;
-          final (icon, label) = e.value;
-          final active = _tab == i;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _tab = i),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: active ? _roleColor : AppColors.glassBorder,
-                      width: active ? 2.5 : 1,
+        children: [
+          Icon(Icons.dashboard_rounded, color: _roleColor, size: 22),
+          SizedBox(width: 8),
+          Text(
+            'Menu Utama',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<SeniorMenuItem> _buildMenuItems() {
+    return [
+      SeniorMenuItem(
+        icon: Icons.receipt_long_rounded,
+        label: 'Order',
+        subtitle: '${_orders.length} order',
+        color: AppColors.roleSO,
+        onTap: () => _navigateToOrders(),
+      ),
+      SeniorMenuItem(
+        icon: Icons.warning_amber_rounded,
+        label: 'Anomali',
+        subtitle: _anomalies.isEmpty ? 'Aman' : '${_anomalies.length} perlu review',
+        color: AppColors.statusDanger,
+        onTap: () => _navigateToAnomalies(),
+        badge: _anomalies.isEmpty ? null : _anomalies.length,
+      ),
+      SeniorMenuItem(
+        icon: Icons.leaderboard_rounded,
+        label: 'KPI',
+        subtitle: 'Kinerja tim',
+        color: AppColors.brandPrimary,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const KpiManagementScreen()),
+        ),
+      ),
+      SeniorMenuItem(
+        icon: Icons.map_rounded,
+        label: 'Armada',
+        subtitle: 'Peta kendaraan',
+        color: AppColors.roleDriver,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OwnerFleetMapScreen()),
+        ),
+      ),
+      SeniorMenuItem(
+        icon: Icons.campaign_rounded,
+        label: 'Perintah',
+        subtitle: 'Kirim ke tim',
+        color: AppColors.brandAccent,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const OwnerCommandScreen()),
+        ),
+      ),
+      SeniorMenuItem(
+        icon: Icons.description_rounded,
+        label: 'Akta',
+        subtitle: 'Monitor akta',
+        color: AppColors.rolePemukaAgama,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const DeathCertOverviewScreen()),
+        ),
+      ),
+      SeniorMenuItem(
+        icon: Icons.videocam_rounded,
+        label: 'CCTV',
+        subtitle: 'Monitoring',
+        color: AppColors.roleSecurity,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CctvMonitoringScreen()),
+        ),
+      ),
+      SeniorMenuItem(
+        icon: Icons.analytics_rounded,
+        label: 'Laporan',
+        subtitle: 'Pendapatan',
+        color: AppColors.statusSuccess,
+        onTap: () => _navigateToReports(),
+      ),
+      SeniorMenuItem(
+        icon: Icons.history_rounded,
+        label: 'Riwayat',
+        subtitle: 'Semua order',
+        color: AppColors.textSecondary,
+        onTap: () => _navigateToOrders(),
+      ),
+    ];
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnomaliesPreview() {
+    final preview = _anomalies.take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: preview.map((a) {
+          final title = (a['title'] as String?) ?? (a['description'] as String?) ?? 'Anomali';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.statusDanger.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.statusDanger.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: AppColors.statusDanger, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                child: Column(
-                  children: [
-                    Icon(icon,
-                        color: active ? _roleColor : AppColors.textHint,
-                        size: 18),
-                    const SizedBox(height: 2),
-                    Text(label,
-                        style: TextStyle(
-                            color: active ? _roleColor : AppColors.textHint,
-                            fontSize: 9,
-                            fontWeight: active
-                                ? FontWeight.bold
-                                : FontWeight.normal)),
-                  ],
-                ),
-              ),
+              ],
             ),
           );
         }).toList(),
@@ -287,1017 +541,111 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     );
   }
 
-  Widget _buildTabContent() {
-    return switch (_tab) {
-      0 => _buildDashboardTab(key: const ValueKey(0)),
-      1 => _buildOrdersTab(key: const ValueKey(1)),
-      2 => _buildAnomaliesTab(key: const ValueKey(2)),
-      3 => _buildReportsTab(key: const ValueKey(3)),
-      4 => const KpiManagementScreen(),
-      5 => const OwnerFleetMapScreen(),
-      _ => const OwnerCommandScreen(),
-    };
-  }
-
-  // ── Tab 0: Dashboard ──────────────────────────────────────────────────────
-
-  Widget _buildDashboardTab({Key? key}) => SingleChildScrollView(
-        key: key,
-        padding: const EdgeInsets.all(20),
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildOrderTodayCard(),
-            const SizedBox(height: 14),
-            _buildIncomeCard(),
-            const SizedBox(height: 14),
-            _buildOperationalAnomalies(),
-            const SizedBox(height: 16),
-            _buildOrderRingChart(),
-            const SizedBox(height: 16),
-            _buildStatsGrid(),
-            const SizedBox(height: 20),
-            _buildQuickInfo(),
-            const SizedBox(height: 16),
-            // v1.39 — CCTV Monitoring
-            GlassWidget(
-              borderRadius: 16,
-              padding: const EdgeInsets.all(14),
-              borderColor: AppColors.roleOwner.withValues(alpha: 0.25),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const CctvMonitoringScreen()),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppColors.roleOwner.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.videocam,
-                        color: AppColors.roleOwner, size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('CCTV Monitoring',
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary)),
-                        Text('Live feed kantor, gudang, Lafiore, parkiran',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.textHint),
-                ],
+  Widget _buildOrdersPreview() {
+    if (_orders.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: const Center(
+            child: Text(
+              'Belum ada order hari ini',
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
               ),
             ),
-            const SizedBox(height: 10),
-            // v1.40 — Monitoring Akta Kematian
-            GlassWidget(
-              borderRadius: 16,
-              padding: const EdgeInsets.all(14),
-              borderColor: const Color(0xFF8E44AD).withValues(alpha: 0.25),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const DeathCertOverviewScreen()),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF8E44AD).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.fact_check,
-                        color: Color(0xFF8E44AD), size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Monitoring Akta Kematian',
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary)),
-                        Text('Lihat progress + deteksi overdue 2 minggu',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.textHint),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildFleetMap(),
-            const SizedBox(height: 20),
-            if (_reports.isNotEmpty) _buildLatestReport(),
-            const SizedBox(height: 40),
-          ],
+          ),
         ),
       );
+    }
 
-  // ── Top Card: Order Hari Ini ──────────────────────────────────────────
-  Widget _buildOrderTodayCard() {
-    final todayCount = int.tryParse(_stats['orders_today']?.toString() ?? '0') ?? 0;
-    final activeCount = int.tryParse(_stats['active_orders']?.toString() ?? '0') ?? 0;
-    final completedCount = int.tryParse(_stats['completed_orders']?.toString() ?? '0') ?? 0;
-
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: AppColors.roleConsumer.withValues(alpha: 0.07),
-      borderColor: AppColors.roleConsumer.withValues(alpha: 0.18),
-      padding: const EdgeInsets.all(22),
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
+    final preview = _orders.take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: preview.map((o) {
+          final orderNumber = (o['order_number'] as String?) ?? '-';
+          final deceasedName = (o['deceased_name'] as String?) ?? '-';
+          final status = (o['status'] as String?) ?? 'pending';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.roleConsumer.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _roleColor.withValues(alpha: 0.15)),
             ),
-            child: Center(
-              child: Text(
-                '$todayCount',
-                style: const TextStyle(
-                    color: AppColors.roleConsumer,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('ORDER HARI INI',
-                    style: TextStyle(
-                        color: AppColors.roleConsumer,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.5)),
-                const SizedBox(height: 6),
-                Text(
-                  'Aktif: $activeCount  |  Selesai: $completedCount',
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Income Card: Today + Month ──────────────────────────────────────────
-  Widget _buildIncomeCard() {
-    final todayIncome = double.tryParse(_stats['revenue_today']?.toString() ?? '0') ?? 0;
-    final monthIncome = double.tryParse(_stats['total_revenue']?.toString() ?? '0') ?? 0;
-    final fmt = NumberFormat('#,###');
-
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: AppColors.statusSuccess.withValues(alpha: 0.06),
-      borderColor: AppColors.statusSuccess.withValues(alpha: 0.18),
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('PENDAPATAN',
-              style: TextStyle(
-                  color: AppColors.statusSuccess,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Hari ini',
-                        style: TextStyle(color: AppColors.textHint, fontSize: 11)),
-                    const SizedBox(height: 2),
-                    Text('Rp ${fmt.format(todayIncome)}',
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900)),
-                  ],
-                ),
-              ),
-              Container(width: 1, height: 36, color: AppColors.glassBorder),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Bulan ini',
-                        style: TextStyle(color: AppColors.textHint, fontSize: 11)),
-                    const SizedBox(height: 2),
-                    Text('Rp ${fmt.format(monthIncome)}',
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Operational Anomalies Card ──────────────────────────────────────────
-  Widget _buildOperationalAnomalies() {
-    // Build anomaly items from available data
-    final items = <Map<String, dynamic>>[];
-
-    // Orders pending too long (from _orders)
-    for (final o in _orders) {
-      if (o is! Map) continue;
-      final status = o['status'] as String? ?? '';
-      if (status == 'pending' || status == 'admin_review') {
-        final createdAt = DateTime.tryParse(o['created_at']?.toString() ?? '');
-        if (createdAt != null && DateTime.now().difference(createdAt).inMinutes > 30) {
-          items.add({
-            'icon': Icons.hourglass_top,
-            'color': AppColors.statusWarning,
-            'title': 'Order belum dikonfirmasi > 30 menit',
-            'detail': '${o['order_number']} — ${o['deceased_name'] ?? '-'}',
-          });
-        }
-      }
-    }
-
-    // Price anomalies from existing data
-    for (final a in _anomalies) {
-      if (a is! Map) continue;
-      items.add({
-        'icon': Icons.price_change,
-        'color': AppColors.statusDanger,
-        'title': 'Anomali harga: ${a['item_name'] ?? '-'}',
-        'detail': 'Selisih +${(a['price_variance_pct'] as num?)?.toStringAsFixed(1) ?? '?'}% di atas pasar',
-      });
-    }
-
-    // Payments overdue — check orders that are completed but not paid
-    for (final o in _orders) {
-      if (o is! Map) continue;
-      final status = o['status'] as String? ?? '';
-      final paymentStatus = o['payment_status'] as String? ?? '';
-      if (status == 'completed' && paymentStatus != 'paid' && paymentStatus != 'proof_uploaded') {
-        final completedAt = DateTime.tryParse(o['completed_at']?.toString() ?? '');
-        if (completedAt != null && DateTime.now().difference(completedAt).inDays >= 3) {
-          items.add({
-            'icon': Icons.payment,
-            'color': Colors.orange.shade700,
-            'title': 'Pembayaran overdue > 3 hari',
-            'detail': '${o['order_number']} — ${o['deceased_name'] ?? '-'}',
-          });
-        }
-      }
-    }
-
-    final anomalyCount = items.length;
-
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: anomalyCount > 0
-          ? AppColors.statusDanger.withValues(alpha: 0.05)
-          : AppColors.statusSuccess.withValues(alpha: 0.05),
-      borderColor: anomalyCount > 0
-          ? AppColors.statusDanger.withValues(alpha: 0.18)
-          : AppColors.statusSuccess.withValues(alpha: 0.18),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                anomalyCount > 0 ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-                color: anomalyCount > 0 ? AppColors.statusDanger : AppColors.statusSuccess,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'ANOMALI',
-                style: TextStyle(
-                    color: anomalyCount > 0 ? AppColors.statusDanger : AppColors.statusSuccess,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5),
-              ),
-              const Spacer(),
-              if (anomalyCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.statusDanger.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text('$anomalyCount',
-                      style: const TextStyle(
-                          color: AppColors.statusDanger,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (anomalyCount == 0)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Tidak ada masalah operasional saat ini.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            )
-          else
-            ...items.take(5).map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(item['icon'] as IconData, size: 16, color: item['color'] as Color),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item['title'] as String,
-                                style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600)),
-                            Text(item['detail'] as String,
-                                style: const TextStyle(
-                                    color: AppColors.textSecondary, fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-          if (anomalyCount > 5)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('+ ${anomalyCount - 5} anomali lainnya...',
-                  style: const TextStyle(color: AppColors.textHint, fontSize: 11)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRevenueCard() => GlassWidget(
-        borderRadius: 20,
-        blurSigma: 16,
-        tint: _roleColor.withValues(alpha: 0.07),
-        borderColor: _roleColor.withValues(alpha: 0.18),
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('TOTAL REVENUE',
-                style: TextStyle(
-                    color: _roleColor,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5)),
-            const SizedBox(height: 6),
-            Text(
-              'Rp ${NumberFormat('#,###').format(double.tryParse(_stats['total_revenue']?.toString() ?? '0') ?? 0)}',
-              style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '${int.tryParse(_stats['total_orders']?.toString() ?? '0') ?? 0} total order',
-              style: const TextStyle(color: AppColors.textHint, fontSize: 12),
-            ),
-          ],
-        ),
-      );
-
-  Widget _buildOrderRingChart() {
-    final active = (int.tryParse(_stats['active_orders']?.toString() ?? '0') ?? 0).toDouble();
-    final completed = (int.tryParse(_stats['completed_orders']?.toString() ?? '0') ?? 0).toDouble();
-    final pending = (int.tryParse(_stats['pending_orders']?.toString() ?? '0') ?? 0).toDouble();
-    final total = active + completed + pending;
-
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: AppColors.glassWhite,
-      borderColor: AppColors.glassBorder,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('DISTRIBUSI ORDER',
-              style: TextStyle(color: _roleColor, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              SizedBox(
-                width: 100,
-                height: 100,
-                child: CustomPaint(
-                  painter: _RingChartPainter(
-                    segments: [
-                      (active, AppColors.roleConsumer),
-                      (completed, AppColors.statusSuccess),
-                      (pending, AppColors.statusWarning),
-                    ],
-                    strokeWidth: 14,
-                  ),
-                  child: Center(
-                    child: Text('${total.toInt()}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.textPrimary)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _legendItem('Aktif', active.toInt(), AppColors.roleConsumer),
-                    const SizedBox(height: 8),
-                    _legendItem('Selesai', completed.toInt(), AppColors.statusSuccess),
-                    const SizedBox(height: 8),
-                    _legendItem('Pending', pending.toInt(), AppColors.statusWarning),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendItem(String label, int count, Color color) => Row(
-    children: [
-      Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-      const SizedBox(width: 8),
-      Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-      const Spacer(),
-      Text('$count', style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
-    ],
-  );
-
-  Widget _buildStatsGrid() => GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.5,
-        children: [
-          _stat('Order Aktif',
-              (_stats['active_orders'] ?? 0).toString(),
-              Icons.local_shipping,
-              AppColors.roleConsumer),
-          _stat('Order Hari Ini',
-              (_stats['orders_today'] ?? 0).toString(),
-              Icons.today,
-              AppColors.statusSuccess),
-          _stat('Driver On Duty',
-              (_stats['drivers_on_duty'] ?? 0).toString(),
-              Icons.drive_eta_outlined,
-              AppColors.roleSO),
-          _stat('Pending PO',
-              (int.tryParse(_stats['pending_po']?.toString() ?? '0') ?? 0).toString(),
-              Icons.receipt_outlined,
-              AppColors.statusWarning),
-        ],
-      );
-
-  Widget _stat(String label, String val, IconData icon, Color color) =>
-      GlassWidget(
-        borderRadius: 16,
-        blurSigma: 16,
-        tint: color.withValues(alpha: 0.07),
-        borderColor: color.withValues(alpha: 0.18),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 18),
-            const Spacer(),
-            Text(val,
-                style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold)),
-            Text(label,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 10)),
-          ],
-        ),
-      );
-
-  Widget _buildQuickInfo() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Ringkasan Armada',
-              style: TextStyle(
-                  color: _roleColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  letterSpacing: 0.5)),
-          const SizedBox(height: 10),
-          GlassWidget(
-            borderRadius: 16,
-            blurSigma: 10,
-            tint: _roleColor.withValues(alpha: 0.06),
-            borderColor: _roleColor.withValues(alpha: 0.18),
-            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _roleColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    color: _roleColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.directions_car_outlined,
-                      color: _roleColor, size: 22),
+                  child: const Icon(Icons.receipt_long_rounded, color: _roleColor, size: 22),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                          '${_stats['drivers_on_duty'] ?? 0} driver on duty',
-                          style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14)),
-                      const SizedBox(height: 2),
+                        deceasedName,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       Text(
-                          '${_driverMarkers.length} kendaraan terlacak di peta',
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
+                        '$orderNumber · $status',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      );
-
-  Widget _buildFleetMap() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Armada Real-time',
-              style: TextStyle(
-                  color: _roleColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  letterSpacing: 0.5)),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: SizedBox(
-              height: 220,
-              width: double.infinity,
-              child: FlutterMap(
-                mapController: _mapCtrl,
-                options: MapOptions(
-                  initialCenter: LatLng(-6.2088, 106.8456),
-                  initialZoom: 11,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.santamaria.funeral',
-                  ),
-                  MarkerLayer(markers: _driverMarkers),
-                ],
-              ),
-            ),
-          ),
-          if (_driverMarkers.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Tidak ada driver On Duty saat ini.',
-                style: TextStyle(color: AppColors.textHint, fontSize: 12),
-              ),
-            ),
-        ],
-      );
-
-  Widget _buildLatestReport() {
-    if (_reports.isEmpty) return const SizedBox.shrink();
-    final report = _reports.first as Map<String, dynamic>;
-    return GlassWidget(
-      borderRadius: 18,
-      blurSigma: 16,
-      tint: AppColors.statusWarning.withValues(alpha: 0.06),
-      borderColor: AppColors.statusWarning.withValues(alpha: 0.20),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.auto_awesome,
-                  color: AppColors.statusWarning, size: 16),
-              const SizedBox(width: 8),
-              const Text('Laporan Harian AI',
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14)),
-              const Spacer(),
-              Text(
-                _formatDate(report['report_date']),
-                style: const TextStyle(
-                    color: AppColors.textHint, fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            report['ai_narrative'] as String? ?? '-',
-            style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 13),
-            maxLines: 5,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
 
-  // ── Tab 1: Orders ─────────────────────────────────────────────────────────
-
-  Widget _buildOrdersTab({Key? key}) {
-    if (_orders.isEmpty) {
-      return Center(
-        key: key,
-        child: const Text('Tidak ada order.',
-            style: TextStyle(color: AppColors.textHint)),
-      );
-    }
-    return ListView.builder(
-      key: key,
-      padding: const EdgeInsets.all(20),
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _orders.length,
-      itemBuilder: (_, i) => _buildOrderCard(_orders[i]),
-    );
-  }
-
-  Widget _buildOrderCard(Map<String, dynamic> o) {
-    final status = o['status'] as String? ?? '';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: GlassWidget(
-        borderRadius: 16,
-        blurSigma: 16,
-        tint: AppColors.glassWhite,
-        borderColor: AppColors.glassBorder,
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(o['order_number'] ?? '-',
-                      style: const TextStyle(
-                          color: AppColors.textHint, fontSize: 11)),
-                  const SizedBox(height: 4),
-                  Text(o['deceased_name'] ?? '-',
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15)),
-                  Text('PIC: ${(o['pic'] as Map?)?['name'] ?? '-'}',
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ),
-            _statusChip(status),
-          ],
-        ),
+  void _navigateToOrders() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const OwnerOrderListScreen(title: 'Daftar Order'),
       ),
+    ).then((_) => _loadData());
+  }
+
+  void _navigateToAnomalies() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const OwnerAnomalyListScreen()),
+    ).then((_) => _loadData());
+  }
+
+  void _navigateToReports() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const OwnerReportsScreen()),
     );
   }
-
-  Widget _statusChip(String s) {
-    final (color, label) = switch (s) {
-      'admin_review' => (AppColors.statusWarning, 'Perlu Aksi'),
-      'approved' => (AppColors.roleConsumer, 'Disetujui'),
-      'in_progress' => (AppColors.statusSuccess, 'Berjalan'),
-      'completed' => (AppColors.roleSO, 'Selesai'),
-      'cancelled' => (AppColors.statusDanger, 'Batal'),
-      _ => (AppColors.textHint, s),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color: color, fontSize: 10, fontWeight: FontWeight.w700)),
-    );
-  }
-
-  // ── Tab 2: Anomalies ──────────────────────────────────────────────────────
-
-  Widget _buildAnomaliesTab({Key? key}) {
-    if (_anomalies.isEmpty) {
-      return Center(
-        key: key,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.check_circle_outline,
-                color: AppColors.statusSuccess, size: 48),
-            SizedBox(height: 12),
-            Text('Tidak ada anomali harga.',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ],
-        ),
-      );
-    }
-    return ListView.builder(
-      key: key,
-      padding: const EdgeInsets.all(20),
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _anomalies.length,
-      itemBuilder: (_, i) => _buildAnomalyCard(_anomalies[i]),
-    );
-  }
-
-  Widget _buildAnomalyCard(Map<String, dynamic> po) {
-    final variance = po['price_variance_pct'];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: GlassWidget(
-        borderRadius: 18,
-        blurSigma: 16,
-        tint: AppColors.statusDanger.withValues(alpha: 0.05),
-        borderColor: AppColors.statusDanger.withValues(alpha: 0.18),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: AppColors.statusDanger, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(po['item_name'] ?? '-',
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _infoRow('Harga Diajukan',
-                'Rp ${NumberFormat('#,###').format(double.tryParse(po['proposed_price']?.toString() ?? '0') ?? 0)}'),
-            _infoRow('Harga Pasar',
-                'Rp ${NumberFormat('#,###').format(double.tryParse(po['market_price']?.toString() ?? '0') ?? 0)}'),
-            if (variance != null)
-              _infoRow('Selisih',
-                  '+${(variance as num).toStringAsFixed(1)}% di atas pasar'),
-            if (po['ai_analysis'] != null) ...[
-              const SizedBox(height: 8),
-              Text(po['ai_analysis'] as String,
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis),
-            ],
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.statusWarning.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline, color: AppColors.statusWarning, size: 14),
-                  SizedBox(width: 6),
-                  Text('Menunggu tindakan Purchasing',
-                      style: TextStyle(
-                          color: AppColors.statusWarning,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String val) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 130,
-              child: Text(label,
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12)),
-            ),
-            Expanded(
-              child: Text(val,
-                  style: const TextStyle(
-                      color: AppColors.textPrimary, fontSize: 12)),
-            ),
-          ],
-        ),
-      );
-
-  // ── Tab 3: Reports ────────────────────────────────────────────────────────
-
-  Widget _buildReportsTab({Key? key}) {
-    if (_reports.isEmpty) {
-      return Center(
-        key: key,
-        child: const Text('Belum ada laporan.',
-            style: TextStyle(color: AppColors.textHint)),
-      );
-    }
-    return ListView.builder(
-      key: key,
-      padding: const EdgeInsets.all(20),
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _reports.length,
-      itemBuilder: (_, i) => _buildReportCard(_reports[i]),
-    );
-  }
-
-  Widget _buildReportCard(Map<String, dynamic> r) => Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        child: GlassWidget(
-          borderRadius: 18,
-          blurSigma: 16,
-          tint: AppColors.glassWhite,
-          borderColor: AppColors.glassBorder,
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.auto_awesome,
-                      color: AppColors.statusWarning, size: 16),
-                  const SizedBox(width: 8),
-                  Text(_formatDate(r['report_date']),
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                r['ai_narrative'] as String? ?? '-',
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13),
-              ),
-              if (r['total_orders'] != null || r['total_revenue'] != null) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _miniStat(
-                        'Order',
-                        (r['total_orders'] ?? 0).toString(),
-                        AppColors.roleConsumer),
-                    const SizedBox(width: 12),
-                    _miniStat(
-                        'Revenue',
-                        'Rp ${NumberFormat.compact().format(double.tryParse(r['total_revenue']?.toString() ?? '0') ?? 0)}',
-                        AppColors.statusSuccess),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-
-  Widget _miniStat(String label, String val, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          children: [
-            Text(val,
-                style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13)),
-            Text(label,
-                style: const TextStyle(
-                    color: AppColors.textHint, fontSize: 10)),
-          ],
-        ),
-      );
-
-  String _formatDate(dynamic raw) {
-    if (raw == null) return '-';
-    try {
-      return DateFormat('d MMMM yyyy', 'id')
-          .format(DateTime.parse(raw.toString()));
-    } catch (_) {
-      return raw.toString();
-    }
-  }
-}
-
-class _RingChartPainter extends CustomPainter {
-  final List<(double value, Color color)> segments;
-  final double strokeWidth;
-
-  _RingChartPainter({required this.segments, this.strokeWidth = 14});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (min(size.width, size.height) - strokeWidth) / 2;
-    final total = segments.fold<double>(0, (sum, s) => sum + s.$1);
-    if (total == 0) {
-      // Draw empty ring
-      canvas.drawCircle(center, radius, Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..color = Colors.grey.withValues(alpha: 0.15));
-      return;
-    }
-
-    double startAngle = -pi / 2;
-    for (final (value, color) in segments) {
-      if (value <= 0) continue;
-      final sweep = (value / total) * 2 * pi;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        sweep,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round
-          ..color = color,
-      );
-      startAngle += sweep;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingChartPainter old) => true;
 }

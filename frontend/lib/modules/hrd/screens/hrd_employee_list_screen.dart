@@ -208,7 +208,7 @@ class _HrdEmployeeListScreenState extends State<HrdEmployeeListScreen> {
                 child: Text(
                   isActive ? 'Aktif' : 'Nonaktif',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 12,
                     color: isActive ? Colors.green : Colors.grey,
                     fontWeight: FontWeight.bold,
                   ),
@@ -222,13 +222,13 @@ class _HrdEmployeeListScreenState extends State<HrdEmployeeListScreen> {
               Text(
                 role,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 13,
                   color: AppColors.roleColor(role),
                 ),
               ),
               Text(
                 emp['phone'] ?? '-',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
             ],
           ),
@@ -556,7 +556,7 @@ class _HrdEmployeeFormScreenState extends State<_HrdEmployeeFormScreen> {
                     ),
                     subtitle: const Text(
                       'HR mewakili karyawan dalam menyetujui bahwa lokasi mereka dipantau selama jam kerja untuk keperluan operasional.',
-                      style: TextStyle(fontSize: 11, height: 1.4),
+                      style: TextStyle(fontSize: 13, height: 1.4),
                     ),
                   ),
                 ),

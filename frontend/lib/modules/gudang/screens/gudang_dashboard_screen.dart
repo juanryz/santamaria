@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/notification_feedback_service.dart';
+import '../../../core/services/notification_watcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../shared/widgets/glass_widget.dart';
-import '../../auth/screens/unified_login_screen.dart';
+import '../../../shared/widgets/notification_bell.dart';
+import '../../../shared/widgets/role_dashboard_header.dart';
+import '../../../shared/widgets/senior_menu_grid.dart';
 import 'gudang_orders_screen.dart';
 import 'coffin_order_list_screen.dart';
 import 'stock_alert_screen.dart';
@@ -19,6 +22,7 @@ import 'stock_damage_report_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
 import '../../../shared/screens/my_leaves_screen.dart';
 
+/// Gudang Dashboard — pattern seragam senior-friendly.
 class GudangDashboardScreen extends StatefulWidget {
   const GudangDashboardScreen({super.key});
 
@@ -27,13 +31,12 @@ class GudangDashboardScreen extends StatefulWidget {
 }
 
 class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
-  final ApiClient _api = ApiClient();
+  final _api = ApiClient();
+  final _notifWatcher = NotificationWatcher();
+  int _lowStockCount = 0;
+  int _pendingOrders = 0;
+  int _totalOrders = 0;
   bool _isLoading = true;
-  int _tab = 0; // 0=Order Aktif, 1=Manajemen Stok, 2=Pengadaan (e-Katalog)
-  int _pendingOrderCount = 0;
-  
-  List<dynamic> _stocks = [];
-  List<dynamic> _procurements = [];
 
   static const _roleColor = AppColors.roleGudang;
 
@@ -44,44 +47,74 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // 1. Load active orders to get badge count
-      try {
-        final ordersRes = await _api.dio.get('/gudang/orders');
-        if (ordersRes.data['success'] == true) {
-          final all = List<dynamic>.from(ordersRes.data['data'] ?? []);
-          _pendingOrderCount = all.where((o) => o['status'] == 'pending' || o['status'] == 'confirmed' || o['status'] == 'approved').length;
-        }
-      } catch (_) {}
+      final alerts = await _api.dio.get('/gudang/stock-alerts').catchError((_) {
+        return null as dynamic;
+      });
+      final orders = await _api.dio.get('/gudang/orders').catchError((_) {
+        return null as dynamic;
+      });
 
-      // 2. Load Stock List
-      try {
-        final stockRes = await _api.dio.get('/gudang/stock');
-        if (stockRes.data['success'] == true) {
-          _stocks = List<dynamic>.from(stockRes.data['data'] ?? []);
-        }
-      } catch (_) {}
-
-      // 3. Load Procurements (e-Katalog)
-      try {
-        final procRes = await _api.dio.get('/gudang/procurement-requests');
-        if (procRes.data['data'] != null) {
-          _procurements = List<dynamic>.from(procRes.data['data'] ?? []);
-        } else if (procRes.data is List) {
-          _procurements = List<dynamic>.from(procRes.data);
-        }
-      } catch (_) {}
-
+      if (alerts != null && alerts.data is Map && alerts.data['success'] == true) {
+        _lowStockCount = (alerts.data['data'] as List?)?.length ?? 0;
+      }
+      if (orders != null && orders.data is Map && orders.data['success'] == true) {
+        final list = orders.data['data'];
+        final items = list is List
+            ? list
+            : (list is Map ? (list['data'] as List? ?? const []) : const []);
+        _pendingOrders = items.where((o) =>
+            ['confirmed', 'preparing', 'ready_to_dispatch']
+                .contains(o['status'])).length;
+        _totalOrders = items.length;
+      }
+      _notifWatcher.check(
+        newCount: _pendingOrders + _lowStockCount,
+        severity: _lowStockCount > 0
+            ? NotificationSeverity.alarm
+            : NotificationSeverity.high,
+      );
+    } catch (_) {
+      // silent
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  List<DashboardNotification> _buildNotifications() {
+    final list = <DashboardNotification>[];
+    if (_lowStockCount > 0) {
+      list.add(DashboardNotification(
+        icon: Icons.warning_amber_rounded,
+        title: 'Stok Tipis',
+        message: '$_lowStockCount item perlu di-restock',
+        color: AppColors.statusDanger,
+      ));
+    }
+    if (_pendingOrders > 0) {
+      list.add(DashboardNotification(
+        icon: Icons.inventory_rounded,
+        title: 'Order Perlu Disiapkan',
+        message: '$_pendingOrders order menunggu',
+        color: AppColors.statusWarning,
+      ));
+    }
+    return list;
+  }
+
+  String _getGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 11) return 'Selamat pagi';
+    if (h < 15) return 'Selamat siang';
+    if (h < 19) return 'Selamat sore';
+    return 'Selamat malam';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final userName = context.read<AuthProvider>().user?['name'] ?? 'Gudang';
+    final user = context.watch<AuthProvider>().user;
+    final userName = (user?['name'] as String?) ?? 'Gudang';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -97,111 +130,101 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
               ),
             ),
           ),
-          Positioned(
-            bottom: 180, left: -40,
-            child: Container(
-              width: 160, height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.brandPrimary.withValues(alpha: 0.06),
-              ),
-            ),
-          ),
-
           SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _loadData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Portal Gudang & Stok',
-                                style: TextStyle(
-                                    color: _roleColor,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                    fontSize: 12)),
-                            const SizedBox(height: 4),
-                            Text('Halo, $userName',
-                                style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const Spacer(),
-                        GlassWidget(
-                          borderRadius: 12,
-                          blurSigma: 10,
-                          tint: AppColors.glassWhite,
-                          borderColor: AppColors.glassBorder,
-                          padding: const EdgeInsets.all(8),
-                          onTap: () async {
-                            final nav = Navigator.of(context);
-                            await context.read<AuthProvider>().logout();
-                            if (!mounted) return;
-                            nav.pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
-                              (_) => false,
-                            );
-                          },
-                          child: const Icon(Icons.logout, color: AppColors.textSecondary, size: 20),
-                        ),
-                        const SizedBox(width: 8),
-                        GlassWidget(
-                          borderRadius: 12,
-                          blurSigma: 10,
-                          tint: AppColors.glassWhite,
-                          borderColor: AppColors.glassBorder,
-                          padding: const EdgeInsets.all(8),
-                          onTap: () => Navigator.push(context,
-                              MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleGudang))),
-                          child: const Icon(Icons.campaign, color: AppColors.roleGudang, size: 20),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Tab selector
-                    GlassWidget(
-                      borderRadius: 50,
-                      blurSigma: 10,
-                      tint: AppColors.glassWhite,
-                      borderColor: AppColors.glassBorder,
-                      padding: const EdgeInsets.all(4),
-                      child: Row(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _pillBtn('Order Aktif', 0, badge: _pendingOrderCount),
-                          _pillBtn('Inventori', 1),
-                          _pillBtn('Pengadaan', 2),
+                          RoleDashboardHeader(
+                            roleLabel: 'Gudang',
+                            roleColor: _roleColor,
+                            greeting: _getGreeting(),
+                            userName: userName,
+                            notifications: _buildNotifications(),
+                            badges: [
+                              if (_lowStockCount > 0)
+                                HeaderBadge(
+                                  label: '$_lowStockCount Stok Tipis',
+                                  color: AppColors.statusDanger,
+                                  icon: Icons.warning_amber_rounded,
+                                ),
+                              if (_pendingOrders > 0)
+                                HeaderBadge(
+                                  label: '$_pendingOrders Perlu Siapkan',
+                                  color: AppColors.statusWarning,
+                                  icon: Icons.inventory_rounded,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Order Aktif',
+                                    value: _pendingOrders.toString(),
+                                    icon: Icons.inventory_2_rounded,
+                                    color: _roleColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Stok Tipis',
+                                    value: _lowStockCount.toString(),
+                                    icon: Icons.warning_amber_rounded,
+                                    color: AppColors.statusDanger,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Total Order',
+                                    value: _totalOrders.toString(),
+                                    icon: Icons.list_alt_rounded,
+                                    color: AppColors.brandPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildSectionHeader('Menu Utama', Icons.dashboard_rounded),
+                          SeniorMenuGrid(
+                            columns: 3,
+                            items: _buildMenu(),
+                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                    if (_isLoading)
-                      const Center(child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child: CircularProgressIndicator(),
-                      ))
-                    else if (_tab == 0) ...[
-                      _buildActiveOrdersTab(),
-                    ] else if (_tab == 1) ...[
-                      _buildStockTab(),
-                    ] else ...[
-                      _buildProcurementTab(),
-                    ],
-                  ],
-                ),
-              ),
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          Icon(icon, color: _roleColor, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
           ),
         ],
@@ -209,422 +232,117 @@ class _GudangDashboardScreenState extends State<GudangDashboardScreen> {
     );
   }
 
-  Widget _quickMenuChip(IconData icon, String label, VoidCallback onTap) {
-    return ActionChip(
-      avatar: Icon(icon, size: 18, color: _roleColor),
-      label: Text(label, style: const TextStyle(fontSize: 12)),
-      backgroundColor: _roleColor.withValues(alpha: 0.08),
-      side: BorderSide(color: _roleColor.withValues(alpha: 0.2)),
-      onPressed: onTap,
-    );
-  }
-
-  Widget _pillBtn(String label, int index, {int badge = 0}) {
-    final isSelected = _tab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _tab = index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? _roleColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(50),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 13,
-                ),
-              ),
-              if (badge > 0) ...[
-                const SizedBox(width: 4),
-                Container(
-                  width: 18, height: 18,
-                  decoration: const BoxDecoration(color: AppColors.statusDanger, shape: BoxShape.circle),
-                  child: Center(
-                    child: Text('$badge',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+  List<SeniorMenuItem> _buildMenu() {
+    return [
+      SeniorMenuItem(
+        icon: Icons.receipt_long_rounded,
+        label: 'Order',
+        subtitle: 'Daftar order',
+        color: _roleColor,
+        badge: _pendingOrders > 0 ? _pendingOrders : null,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const GudangOrdersScreen()))
+            .then((_) => _loadData()),
       ),
-    );
-  }
-
-  Widget _buildActiveOrdersTab() {
-    return Column(
-      children: [
-        GlassWidget(
-          borderRadius: 16,
-          blurSigma: 16,
-          tint: _roleColor.withValues(alpha: 0.06),
-          borderColor: _roleColor.withValues(alpha: 0.15),
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              const Icon(Icons.inventory_2_outlined, color: AppColors.roleGudang, size: 20),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Proses Cek Stok Order', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-                  Text(
-                    '$_pendingOrderCount order menunggu penyiapan barang.',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const GudangOrdersScreen()));
-              _loadData();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _roleColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-            icon: const Icon(Icons.checklist_rounded, size: 20),
-            label: const Text('Buka Daftar Order Aktif', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- TAB INVENTORI / STOK ---
-
-  Widget _buildStockTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // v1.14 Quick Access Menu
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _quickMenuChip(Icons.inventory_2, 'Workshop Peti', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CoffinOrderListScreen()));
-            }),
-            _quickMenuChip(Icons.warning_amber, 'Alert Stok', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockAlertScreen()));
-            }),
-            _quickMenuChip(Icons.handyman, 'Pinjaman Peralatan', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const EquipmentLoanListScreen()));
-            }),
-            _quickMenuChip(Icons.swap_vert, 'Ambil/Kembali Barang', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockFormScreen()));
-            }),
-            _quickMenuChip(Icons.local_shipping, 'Terima Barang Supplier', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const GudangReceiveScreen()));
-            }),
-            _quickMenuChip(Icons.assignment_return, 'Pengembalian Item', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const GudangItemReturnScreen()));
-            }),
-            _quickMenuChip(Icons.build, 'Maintenance Kendaraan', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleMaintenanceScreen()));
-            }),
-            // ── v1.40 ──
-            _quickMenuChip(Icons.event_note, 'Stock Opname Semester', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockOpnameScreen()));
-            }),
-            _quickMenuChip(Icons.compare_arrows, 'Transfer Stok', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockTransferScreen()));
-            }),
-            _quickMenuChip(Icons.qr_code_scanner, 'Lapor Barang Rusak', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const StockDamageReportScreen()));
-            }),
-            _quickMenuChip(Icons.event_available, 'Cuti & Izin', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const MyLeavesScreen()));
-            }),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Manajemen Stok Item', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
-            IconButton(
-              icon: const Icon(Icons.add_circle, color: AppColors.roleGudang),
-              onPressed: () => _showAddStockDialog(),
-            )
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (_stocks.isEmpty)
-          const Text('Belum ada data stok.', style: TextStyle(color: AppColors.textHint))
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _stocks.length,
-            itemBuilder: (ctx, i) {
-              final stock = _stocks[i];
-              final qty = stock['current_quantity'] ?? 0;
-              final minQty = stock['minimum_quantity'] ?? 0;
-              final isCritical = qty <= minQty;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: GlassWidget(
-                  borderRadius: 16,
-                  blurSigma: 10,
-                  tint: isCritical ? AppColors.statusDanger.withValues(alpha: 0.05) : AppColors.glassWhite,
-                  borderColor: isCritical ? AppColors.statusDanger.withValues(alpha: 0.3) : AppColors.glassBorder,
-                  padding: const EdgeInsets.all(16),
-                  onTap: () => _showEditStockDialog(stock),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isCritical ? AppColors.statusDanger.withValues(alpha: 0.1) : _roleColor.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.inventory, color: isCritical ? AppColors.statusDanger : _roleColor, size: 20),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(stock['item_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 15)),
-                            Text('Kategori: ${stock['category'] ?? '-'}', style: const TextStyle(color: AppColors.textHint, fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text('$qty ${stock['unit']}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: isCritical ? AppColors.statusDanger : AppColors.textPrimary)),
-                          if (isCritical)
-                            const Text('Limit Habis!', style: TextStyle(color: AppColors.statusDanger, fontSize: 10, fontWeight: FontWeight.bold))
-                          else
-                            Text('Min: $minQty', style: const TextStyle(color: AppColors.textHint, fontSize: 11)),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  void _showAddStockDialog() {
-    final nameCtrl = TextEditingController();
-    final catCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    final minQtyCtrl = TextEditingController();
-    final unitCtrl = TextEditingController();
-    
-    showDialog(context: context, builder: (_) => AlertDialog(
-      title: const Text('Tambah Data Stok'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Barang')),
-            TextField(controller: catCtrl, decoration: const InputDecoration(labelText: 'Kategori (contoh: Peti)')),
-            TextField(controller: qtyCtrl, decoration: const InputDecoration(labelText: 'Stok Awal'), keyboardType: TextInputType.number),
-            TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: 'Satuan (contoh: pcs)')),
-            TextField(controller: minQtyCtrl, decoration: const InputDecoration(labelText: 'Minimum Stok (Warning)'), keyboardType: TextInputType.number),
-          ],
-        ),
+      SeniorMenuItem(
+        icon: Icons.warning_amber_rounded,
+        label: 'Alert Stok',
+        subtitle: _lowStockCount > 0 ? '$_lowStockCount tipis' : 'Semua aman',
+        color: AppColors.statusDanger,
+        badge: _lowStockCount > 0 ? _lowStockCount : null,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const StockAlertScreen()))
+            .then((_) => _loadData()),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
-        ElevatedButton(
-          onPressed: () async {
-            try {
-              final payload = {
-                'item_name': nameCtrl.text,
-                'category': catCtrl.text,
-                'current_quantity': int.tryParse(qtyCtrl.text) ?? 0,
-                'unit': unitCtrl.text,
-                'minimum_quantity': int.tryParse(minQtyCtrl.text) ?? 0,
-              };
-              await _api.dio.post('/gudang/stock', data: payload);
-              if (mounted) {
-                Navigator.pop(context);
-                _loadData();
-              }
-            } catch (e) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menambah stok')));
-            }
-          },
-          child: const Text('Simpan'),
-        )
-      ],
-    ));
-  }
-
-  void _showEditStockDialog(Map<String, dynamic> stock) {
-    final qtyCtrl = TextEditingController(text: stock['current_quantity']?.toString());
-    
-    showDialog(context: context, builder: (_) => AlertDialog(
-      title: Text('Edit Stok: ${stock['item_name']}'),
-      content: TextField(
-        controller: qtyCtrl, 
-        decoration: const InputDecoration(labelText: 'Jumlah Tersedia Saat Ini'), 
-        keyboardType: TextInputType.number
+      SeniorMenuItem(
+        icon: Icons.inventory_rounded,
+        label: 'Stok',
+        subtitle: 'Kelola barang',
+        color: AppColors.brandPrimary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const StockFormScreen())),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
-        ElevatedButton(
-          onPressed: () async {
-            try {
-              await _api.dio.put('/gudang/stock/${stock['id']}', data: {
-                'current_quantity': int.tryParse(qtyCtrl.text) ?? 0,
-              });
-              if (mounted) {
-                Navigator.pop(context);
-                _loadData();
-              }
-            } catch (e) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal update')));
-            }
-          },
-          child: const Text('Update'),
-        )
-      ],
-    ));
-  }
-
-  // --- TAB PENGADAAN (PROCUREMENT) ---
-
-  Widget _buildProcurementTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Request Pengadaan (e-Katalog)', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
-            IconButton(
-              icon: const Icon(Icons.add_shopping_cart, color: AppColors.roleGudang),
-              onPressed: () => _showAddProcurementDialog(),
-            )
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (_procurements.isEmpty)
-          const Text('Belum ada request pengadaan.', style: TextStyle(color: AppColors.textHint))
-        else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _procurements.length,
-            itemBuilder: (ctx, i) {
-              final pr = _procurements[i];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: GlassWidget(
-                  borderRadius: 16,
-                  blurSigma: 10,
-                  tint: AppColors.glassWhite,
-                  borderColor: AppColors.glassBorder,
-                  padding: const EdgeInsets.all(16),
-                  onTap: () {},
-                  child: Row(
-                    children: [
-                      const Icon(Icons.assignment, color: _roleColor, size: 28),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(pr['item_name'] ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary, fontSize: 15)),
-                            Text('${pr['request_number']} • Qty: ${pr['quantity']}', style: const TextStyle(color: AppColors.textHint, fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                      Container(
-                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                         decoration: BoxDecoration(color: _roleColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                         child: Text(pr['status'] ?? '-', style: const TextStyle(color: _roleColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                      )
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  void _showAddProcurementDialog() {
-    final nameCtrl = TextEditingController();
-    final catCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    final unitCtrl = TextEditingController();
-    final addressCtrl = TextEditingController(text: 'Gudang Pusat Santa Maria');
-    
-    showDialog(context: context, builder: (_) => AlertDialog(
-      title: const Text('Buat Request Pengadaan'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nama Barang')),
-            TextField(controller: catCtrl, decoration: const InputDecoration(labelText: 'Kategori')),
-            TextField(controller: qtyCtrl, decoration: const InputDecoration(labelText: 'Jumlah Kebutuhan'), keyboardType: TextInputType.number),
-            TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: 'Satuan')),
-            TextField(controller: addressCtrl, decoration: const InputDecoration(labelText: 'Alamat Pengiriman')),
-          ],
-        ),
+      SeniorMenuItem(
+        icon: Icons.inventory_2_rounded,
+        label: 'Peti',
+        subtitle: 'Workshop peti',
+        color: AppColors.rolePemukaAgama,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const CoffinOrderListScreen())),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
-        ElevatedButton(
-          onPressed: () async {
-            try {
-              final payload = {
-                'item_name': nameCtrl.text,
-                'category': catCtrl.text,
-                'quantity': int.tryParse(qtyCtrl.text) ?? 1,
-                'unit': unitCtrl.text,
-                'delivery_address': addressCtrl.text,
-                'status': 'draft',
-              };
-              final res = await _api.dio.post('/gudang/procurement-requests', data: payload);
-              if (mounted) {
-                // Auto-publish it immediately for e-Katalog
-                if (res.data != null && res.data['id'] != null) {
-                   await _api.dio.put('/gudang/procurement-requests/${res.data['id']}/publish');
-                }
-                if (!mounted) return;
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pengadaan diajukan ke Supplier!')));
-                _loadData();
-              }
-            } catch (e) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal buat pengadaan')));
-            }
-          },
-          style: ElevatedButton.styleFrom(backgroundColor: _roleColor, foregroundColor: Colors.white),
-          child: const Text('Submit & Publikasi'),
-        )
-      ],
-    ));
+      SeniorMenuItem(
+        icon: Icons.handshake_rounded,
+        label: 'Pinjam Alat',
+        subtitle: 'Equipment loan',
+        color: AppColors.brandSecondary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const EquipmentLoanListScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.move_up_rounded,
+        label: 'Transfer',
+        subtitle: 'Antar lokasi',
+        color: AppColors.statusInfo,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const StockTransferScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.fact_check_rounded,
+        label: 'Opname',
+        subtitle: 'Stock opname',
+        color: AppColors.brandAccent,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const StockOpnameScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.inbox_rounded,
+        label: 'Barang Masuk',
+        subtitle: 'Terima barang',
+        color: AppColors.statusSuccess,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const GudangReceiveScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.assignment_return_rounded,
+        label: 'Barang Kembali',
+        subtitle: 'Retur barang',
+        color: AppColors.roleGudang,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const GudangItemReturnScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.broken_image_rounded,
+        label: 'Rusak/Hilang',
+        subtitle: 'Lapor barang',
+        color: AppColors.statusDanger,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const StockDamageReportScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.build_rounded,
+        label: 'Kendaraan',
+        subtitle: 'Maintenance',
+        color: AppColors.textSecondary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const VehicleMaintenanceScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.campaign_rounded,
+        label: 'Perintah',
+        subtitle: 'Dari Owner',
+        color: AppColors.roleOwner,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleGudang))),
+      ),
+      SeniorMenuItem(
+        icon: Icons.beach_access_rounded,
+        label: 'Cuti',
+        subtitle: 'Ajukan cuti',
+        color: AppColors.brandPrimary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const MyLeavesScreen())),
+      ),
+    ];
   }
 }

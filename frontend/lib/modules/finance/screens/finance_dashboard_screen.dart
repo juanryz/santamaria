@@ -386,7 +386,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(color: AppColors.textHint, fontSize: 10),
+            style: const TextStyle(color: AppColors.textHint, fontSize: 12),
           ),
         ],
       ),
@@ -567,7 +567,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                       'Bulan',
                       style: TextStyle(
                         color: AppColors.textHint,
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -578,7 +578,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                       'Pendapatan',
                       style: TextStyle(
                         color: AppColors.statusSuccess,
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -589,7 +589,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                       'Pengeluaran',
                       style: TextStyle(
                         color: AppColors.statusDanger,
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -600,7 +600,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                       'Laba',
                       style: TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -623,7 +623,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                           monthLabel,
                           style: const TextStyle(
                             color: AppColors.textPrimary,
-                            fontSize: 11,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -634,7 +634,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                           _compactCurrency(income),
                           style: const TextStyle(
                             color: AppColors.statusSuccess,
-                            fontSize: 11,
+                            fontSize: 13,
                           ),
                         ),
                       ),
@@ -644,7 +644,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                           _compactCurrency(expense),
                           style: const TextStyle(
                             color: AppColors.statusDanger,
-                            fontSize: 11,
+                            fontSize: 13,
                           ),
                         ),
                       ),
@@ -656,7 +656,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                             color: profit >= 0
                                 ? AppColors.statusSuccess
                                 : AppColors.statusDanger,
-                            fontSize: 11,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -802,7 +802,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                     code,
                     style: const TextStyle(
                       color: AppColors.textHint,
-                      fontSize: 11,
+                      fontSize: 13,
                     ),
                   ),
                 ],
@@ -833,7 +833,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                     '$days hari',
                     style: TextStyle(
                       color: chipColor,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -936,7 +936,7 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                     'Checkout: $dateStr',
                     style: const TextStyle(
                       color: AppColors.textHint,
-                      fontSize: 11,
+                      fontSize: 13,
                     ),
                   ),
                 ],

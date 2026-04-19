@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../providers/auth_provider.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/notification_feedback_service.dart';
+import '../../../core/services/notification_watcher.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../data/repositories/admin_repository.dart';
-import '../../../shared/widgets/glass_widget.dart';
-import '../../auth/screens/unified_login_screen.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../shared/widgets/notification_bell.dart';
+import '../../../shared/widgets/role_dashboard_header.dart';
+import '../../../shared/widgets/senior_menu_grid.dart';
 import 'admin_order_list_screen.dart';
-import 'admin_order_detail_screen.dart';
 import 'admin_package_management_screen.dart';
 import 'admin_fleet_management_screen.dart';
-import '../../../shared/widgets/change_password_dialog.dart';
-import 'admin_documentation_screen.dart';
 import 'admin_master_data_screen.dart';
-import 'musician_wage_config_screen.dart';
+import 'admin_documentation_screen.dart';
 import 'cctv_management_screen.dart';
 import '../../../shared/screens/employee_command_screen.dart';
 
+/// Admin Dashboard — pattern seragam senior-friendly.
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
@@ -26,8 +27,10 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   late final AdminRepository _repo;
+  final _notifWatcher = NotificationWatcher();
   Map<String, dynamic> _stats = {};
-  List<dynamic> _recentOrders = [];
+  int _pendingOrders = 0;
+  int _activeOrders = 0;
   bool _isLoading = true;
 
   static const _roleColor = AppColors.roleAdmin;
@@ -44,85 +47,150 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final res = await _repo.getDashboard();
       if (res.data['success'] == true) {
-        setState(() {
-          _stats = res.data['data']['stats'];
-          _recentOrders = res.data['data']['recent_orders'];
-        });
+        _stats = Map<String, dynamic>.from(res.data['data'] ?? {});
+        _pendingOrders = (_stats['pending_orders'] as int?) ?? 0;
+        _activeOrders = (_stats['active_orders'] as int?) ?? 0;
       }
-    } catch (e) {
-      debugPrint('Error loading admin dashboard: $e');
+      _notifWatcher.check(
+        newCount: _pendingOrders,
+        severity: NotificationSeverity.high,
+      );
+    } catch (_) {
+      // silent
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  List<DashboardNotification> _buildNotifications() {
+    final list = <DashboardNotification>[];
+    if (_pendingOrders > 0) {
+      list.add(DashboardNotification(
+        icon: Icons.local_shipping_rounded,
+        title: 'Perlu Armada',
+        message: '$_pendingOrders order menunggu armada',
+        color: AppColors.statusWarning,
+      ));
+    }
+    return list;
+  }
+
+  String _getGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 11) return 'Selamat pagi';
+    if (h < 15) return 'Selamat siang';
+    if (h < 19) return 'Selamat sore';
+    return 'Selamat malam';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    final user = context.watch<AuthProvider>().user;
+    final userName = (user?['name'] as String?) ?? 'Admin';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Color blobs
           Positioned(
-            top: -60,
-            right: -60,
+            top: -60, right: -60,
             child: Container(
-              width: 220,
-              height: 220,
+              width: 220, height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _roleColor.withValues(alpha: 0.08),
               ),
             ),
           ),
-          Positioned(
-            bottom: 160,
-            left: -40,
-            child: Container(
-              width: 160,
-              height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.brandPrimary.withValues(alpha: 0.06),
-              ),
-            ),
-          ),
-
           SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _loadData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(context),
-                    const SizedBox(height: 28),
-                    _buildStatsGrid(),
-                    const SizedBox(height: 28),
-                    _buildQuickActions(),
-                    const SizedBox(height: 28),
-                    _buildAiInsightCard(),
-                    const SizedBox(height: 28),
-                    const Text('Order Terbaru',
-                        style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    _buildRecentOrders(),
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RoleDashboardHeader(
+                            roleLabel: 'Admin',
+                            roleColor: _roleColor,
+                            greeting: _getGreeting(),
+                            userName: userName,
+                            notifications: _buildNotifications(),
+                            badges: [
+                              if (_pendingOrders > 0)
+                                HeaderBadge(
+                                  label: '$_pendingOrders Perlu Armada',
+                                  color: AppColors.statusWarning,
+                                  icon: Icons.local_shipping_rounded,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Perlu Armada',
+                                    value: _pendingOrders.toString(),
+                                    icon: Icons.local_shipping_rounded,
+                                    color: AppColors.statusWarning,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Sedang Proses',
+                                    value: _activeOrders.toString(),
+                                    icon: Icons.autorenew_rounded,
+                                    color: _roleColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DashboardStatCard(
+                                    label: 'Total Order',
+                                    value: '${_stats['total_orders'] ?? 0}',
+                                    icon: Icons.list_alt_rounded,
+                                    color: AppColors.brandPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          _buildSectionHeader('Menu Utama', Icons.dashboard_rounded),
+                          SeniorMenuGrid(
+                            columns: 3,
+                            items: _buildMenu(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          Icon(icon, color: _roleColor, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
             ),
           ),
         ],
@@ -130,367 +198,67 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    final name = context.read<AuthProvider>().user?['name'] ?? 'Admin';
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Admin Portal',
-                  style: TextStyle(
-                      color: _roleColor,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                      fontSize: 12)),
-              const SizedBox(height: 4),
-              Text('Halo, $name',
-                  style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900)),
-            ],
-          ),
-        ),
-        const Spacer(),
-        GlassWidget(
-          borderRadius: 12,
-          blurSigma: 10,
-          tint: AppColors.glassWhite,
-          borderColor: AppColors.glassBorder,
-          padding: const EdgeInsets.all(8),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleAdmin))),
-          child: const Icon(Icons.campaign, color: AppColors.roleAdmin, size: 20),
-        ),
-        const SizedBox(width: 8),
-        GlassWidget(
-          borderRadius: 12,
-          blurSigma: 10,
-          tint: AppColors.glassWhite,
-          borderColor: AppColors.glassBorder,
-          padding: const EdgeInsets.all(8),
-          onTap: () async {
-            final nav = Navigator.of(context);
-            await context.read<AuthProvider>().logout();
-            if (!mounted) return;
-            nav.pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const UnifiedLoginScreen()),
-              (_) => false,
-            );
-          },
-          child: const Icon(Icons.logout,
-              color: AppColors.textSecondary, size: 20),
-        ),
-        const SizedBox(width: 8),
-        GlassWidget(
-          borderRadius: 12,
-          blurSigma: 10,
-          tint: AppColors.glassWhite,
-          borderColor: AppColors.glassBorder,
-          padding: const EdgeInsets.all(8),
-          onTap: () {
-            showDialog(
-              context: context,
-              builder: (_) => ChangePasswordDialog(
-                apiClient: ApiClient(),
-                isPin: false,
-              ),
-            );
-          },
-          child: const Icon(Icons.settings_outlined,
-              color: AppColors.textSecondary, size: 20),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildQuickActions() {
-    final actions = [
-      (
-        Icons.dataset_outlined,
-        'Master Data',
-        'Paket, threshold, armada, & lainnya',
-        () => Navigator.push(context,
-            MaterialPageRoute(
-                builder: (_) => const AdminMasterDataScreen())),
+  List<SeniorMenuItem> _buildMenu() {
+    return [
+      SeniorMenuItem(
+        icon: Icons.receipt_long_rounded,
+        label: 'Order',
+        subtitle: 'Daftar order',
+        color: _roleColor,
+        badge: _pendingOrders > 0 ? _pendingOrders : null,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminOrderListScreen()))
+            .then((_) => _loadData()),
       ),
-      (
-        Icons.inventory_2_outlined,
-        'Manajemen Paket',
-        'Kelola paket & item stok',
-        () => Navigator.push(context,
-            MaterialPageRoute(
-                builder: (_) => const AdminPackageManagementScreen())),
+      SeniorMenuItem(
+        icon: Icons.inventory_2_rounded,
+        label: 'Paket',
+        subtitle: 'Kelola paket',
+        color: AppColors.brandPrimary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminPackageManagementScreen())),
       ),
-      (
-        Icons.local_shipping_outlined,
-        'Manajemen Armada',
-        'Daftar mobil jenazah & status',
-        () => Navigator.push(context,
-            MaterialPageRoute(
-                builder: (_) => const AdminFleetManagementScreen())),
+      SeniorMenuItem(
+        icon: Icons.local_shipping_rounded,
+        label: 'Armada',
+        subtitle: 'Kendaraan',
+        color: AppColors.roleDriver,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminFleetManagementScreen())),
       ),
-      (
-        Icons.photo_camera_back_outlined,
-        'Dokumentasi (CRM)',
-        'Upload foto & video pasca acara',
-        () => Navigator.push(context,
-            MaterialPageRoute(
-                builder: (_) => const AdminDocumentationScreen())),
+      SeniorMenuItem(
+        icon: Icons.settings_rounded,
+        label: 'Master Data',
+        subtitle: 'Konfigurasi',
+        color: AppColors.brandSecondary,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminMasterDataScreen())),
       ),
-      // v1.40 — Tarif musisi per orang per sesi
-      (
-        Icons.music_note_outlined,
-        'Tarif Musisi',
-        'Rate per orang per sesi (musisi/MC/paduan suara)',
-        () => Navigator.push(context,
-            MaterialPageRoute(
-                builder: (_) => const MusicianWageConfigScreen())),
+      SeniorMenuItem(
+        icon: Icons.videocam_rounded,
+        label: 'CCTV',
+        subtitle: 'Kelola kamera',
+        color: AppColors.roleSecurity,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const CctvManagementScreen())),
       ),
-      // v1.39 — CCTV cameras
-      (
-        Icons.videocam_outlined,
-        'Kelola CCTV',
-        'Daftar kamera & stream URL',
-        () => Navigator.push(context,
+      SeniorMenuItem(
+        icon: Icons.description_rounded,
+        label: 'Dokumentasi',
+        subtitle: 'User manual',
+        color: AppColors.statusInfo,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AdminDocumentationScreen())),
+      ),
+      SeniorMenuItem(
+        icon: Icons.campaign_rounded,
+        label: 'Perintah',
+        subtitle: 'Dari Owner',
+        color: AppColors.roleOwner,
+        onTap: () => Navigator.push(context,
             MaterialPageRoute(
-                builder: (_) => const CctvManagementScreen())),
+                builder: (_) => const EmployeeCommandScreen(roleColor: AppColors.roleAdmin))),
       ),
     ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Kelola Master Data',
-            style: TextStyle(
-                color: _roleColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                letterSpacing: 0.5)),
-        const SizedBox(height: 10),
-        ...actions.map((a) {
-          final (icon, title, subtitle, onTap) = a;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            child: GlassWidget(
-              borderRadius: 16,
-              blurSigma: 10,
-              tint: _roleColor.withValues(alpha: 0.05),
-              borderColor: _roleColor.withValues(alpha: 0.15),
-              padding: const EdgeInsets.all(14),
-              onTap: onTap,
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(9),
-                    decoration: BoxDecoration(
-                      color: _roleColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: _roleColor, size: 20),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title,
-                            style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13)),
-                        Text(subtitle,
-                            style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.textHint, size: 18),
-                ],
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  void _openOrderList() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AdminOrderListScreen()),
-    ).then((_) => _loadData());
-  }
-
-  Widget _buildStatsGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: 1.5,
-      children: [
-        _statCard('Total Order', (_stats['total_orders'] ?? 0).toString(),
-            Icons.receipt_long, AppColors.roleConsumer, _openOrderList),
-        _statCard('Selesai Hari Ini', (_stats['completed_today'] ?? 0).toString(),
-            Icons.check_circle, AppColors.statusSuccess, _openOrderList),
-        _statCard('Aktif', (_stats['active_orders'] ?? 0).toString(),
-            Icons.local_shipping, AppColors.statusSuccess, _openOrderList),
-        _statCard(
-          'Revenue',
-          'Rp ${( (double.tryParse(_stats['total_revenue']?.toString() ?? '0') ?? 0) / 1000000).toStringAsFixed(1)}M',
-          Icons.payments,
-          AppColors.brandPrimary,
-          null,
-        ),
-      ],
-    );
-  }
-
-  Widget _statCard(String label, String value, IconData icon, Color color,
-      VoidCallback? onTap) {
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: AppColors.glassWhite,
-      borderColor: AppColors.glassBorder,
-      padding: const EdgeInsets.all(16),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const Spacer(),
-          Text(value,
-              style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold)),
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.textHint, fontSize: 10)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAiInsightCard() {
-    final active = int.tryParse(_stats['active_orders']?.toString() ?? '0') ?? 0;
-    final completedToday = int.tryParse(_stats['completed_today']?.toString() ?? '0') ?? 0;
-    final insight = 'Sistem berjalan normal secara otomatis. $active order sedang berjalan, $completedToday selesai hari ini.';
-
-    return GlassWidget(
-      borderRadius: 20,
-      blurSigma: 16,
-      tint: AppColors.statusSuccess.withValues(alpha: 0.06),
-      borderColor: AppColors.statusSuccess.withValues(alpha: 0.20),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: AppColors.statusSuccess, size: 20),
-              const SizedBox(width: 12),
-              const Text('Semua Berjalan Baik',
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.statusSuccess.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text('NORMAL',
-                    style: TextStyle(
-                        color: AppColors.statusSuccess,
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            insight,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentOrders() {
-    if (_recentOrders.isEmpty) {
-      return const Center(
-          child: Text('Tidak ada order terbaru',
-              style: TextStyle(color: AppColors.textSecondary)));
-    }
-
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _recentOrders.length,
-      itemBuilder: (context, index) {
-        final order = _recentOrders[index];
-        final consumer = order['pic'] as Map<String, dynamic>?;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: GlassWidget(
-            borderRadius: 20,
-            blurSigma: 16,
-            tint: AppColors.glassWhite,
-            borderColor: AppColors.glassBorder,
-            padding: const EdgeInsets.all(16),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    AdminOrderDetailScreen(orderId: order['id'] as String),
-              ),
-            ).then((_) => _loadData()),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _roleColor.withValues(alpha: 0.10),
-                  ),
-                  child: Icon(Icons.person,
-                      color: _roleColor, size: 18),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(consumer?['name'] ?? 'Konsumen',
-                          style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold)),
-                      Text(
-                          'Order ${order['order_number']} • ${order['status']}',
-                          style: const TextStyle(
-                              color: AppColors.textHint, fontSize: 11)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right,
-                    color: AppColors.textHint, size: 20),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 }

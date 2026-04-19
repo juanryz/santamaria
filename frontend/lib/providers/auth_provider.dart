@@ -21,10 +21,18 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final response = await _repository.loginInternal(identifier, password);
-      if (response.data['success']) {
-        final token = response.data['data']['access_token'];
-        _user = response.data['data']['user'];
-        await _storage.write(key: 'auth_token', value: token);
+      if (response.data is Map && response.data['success'] == true) {
+        final data = response.data['data'];
+        if (data is Map) {
+          final token = data['access_token']?.toString();
+          final userData = data['user'];
+          if (token != null) {
+            await _storage.write(key: 'auth_token', value: token);
+          }
+          if (userData is Map) {
+            _user = Map<String, dynamic>.from(userData);
+          }
+        }
       }
     } catch (e) {
       rethrow;

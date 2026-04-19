@@ -325,7 +325,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                               color: _isOnDuty
                                   ? AppColors.statusSuccess
                                   : AppColors.textHint,
-                              fontSize: 10,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -474,7 +474,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                 const Spacer(),
                 Text(order['order_number'] ?? '',
                     style: const TextStyle(
-                        color: AppColors.textHint, fontSize: 11)),
+                        color: AppColors.textHint, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 12),

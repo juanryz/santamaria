@@ -37,9 +37,9 @@ class CemeteryController extends Controller
             'city'          => 'required|string|max:100',
             'cemetery_type' => 'nullable|string|max:50',
             'address'       => 'nullable|string|max:500',
-            'phone'         => 'nullable|string|max:30',
-            'latitude'      => 'nullable|numeric',
-            'longitude'     => 'nullable|numeric',
+            'contact_phone' => 'nullable|string|max:30',
+            'lat'           => 'nullable|numeric',
+            'lng'           => 'nullable|numeric',
             'notes'         => 'nullable|string|max:1000',
         ]);
 
@@ -66,9 +66,9 @@ class CemeteryController extends Controller
             'city'          => 'sometimes|required|string|max:100',
             'cemetery_type' => 'nullable|string|max:50',
             'address'       => 'nullable|string|max:500',
-            'phone'         => 'nullable|string|max:30',
-            'latitude'      => 'nullable|numeric',
-            'longitude'     => 'nullable|numeric',
+            'contact_phone' => 'nullable|string|max:30',
+            'lat'           => 'nullable|numeric',
+            'lng'           => 'nullable|numeric',
             'notes'         => 'nullable|string|max:1000',
             'is_active'     => 'nullable|boolean',
         ]);
