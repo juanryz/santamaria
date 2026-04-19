@@ -88,5 +88,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+	<!-- Face ID permission description — WAJIB ada supaya Face ID bisa dipakai -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Gunakan Face ID untuk login cepat ke Santa Maria Funeral Organizer tanpa memasukkan password.</string>
 </dict>
 </plist>

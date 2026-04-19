@@ -33,6 +33,11 @@
     <!-- image_picker: gallery access on Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
+    <!-- Biometric authentication (Face ID / Fingerprint) — Android 6+ -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Backward compat untuk Android 6-8 (API 23-27) -->
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+
     <application
         android:label="Santa Maria"
         android:name="${applicationName}"

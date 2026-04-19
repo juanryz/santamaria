@@ -89,8 +89,13 @@ class AuthProvider extends ChangeNotifier {
       await _storage.write(key: 'auth_token', value: token);
       // Fetch user profile with the stored token
       final response = await _repository.getMe();
-      if (response.data['success'] == true) {
-        _user = response.data['data'];
+      if (response.data is Map && response.data['success'] == true) {
+        final d = response.data['data'];
+        if (d is Map) {
+          _user = Map<String, dynamic>.from(d);
+        } else {
+          throw Exception('Invalid session data');
+        }
       } else {
         throw Exception('Session expired');
       }

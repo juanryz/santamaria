@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../modules/auth/screens/unified_login_screen.dart';
+import '../../modules/settings/screens/settings_screen.dart';
 import 'glass_widget.dart';
 import 'notification_bell.dart';
 
@@ -100,7 +101,7 @@ class RoleDashboardHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              // Right: bell + actions + logout
+              // Right: bell + actions + settings + logout
               Wrap(
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -111,6 +112,24 @@ class RoleDashboardHeader extends StatelessWidget {
                       accentColor: roleColor,
                     ),
                   if (actions != null) ...actions!,
+                  // ⚙️ Settings — biometric, ubah password, KPI, logout, dll
+                  GlassWidget(
+                    borderRadius: 14,
+                    blurSigma: 10,
+                    tint: AppColors.glassWhite,
+                    borderColor: AppColors.glassBorder,
+                    padding: const EdgeInsets.all(12),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen()),
+                    ),
+                    child: const Icon(
+                      Icons.settings_rounded,
+                      color: AppColors.textSecondary,
+                      size: 22,
+                    ),
+                  ),
                   if (showLogout)
                     GlassWidget(
                       borderRadius: 14,
